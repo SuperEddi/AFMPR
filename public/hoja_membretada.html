@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Hoja Membretada - Ministerio de la Presidencia</title>
+  <style>
+    @page {
+      size: letter portrait;
+      margin: 0;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Consolas', 'Courier New', monospace;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    html,
+    body {
+      width: 8.5in;
+      min-height: 11in;
+      background: #fff;
+      overflow: visible;
+    }
+
+    .page {
+      width: 8.5in;
+      min-height: 11in;
+      position: relative;
+      background: #fff;
+      overflow: visible;
+      padding: 0.5in;
+    }
+
+    /* ── HEXÁGONOS esquina superior derecha ── */
+    .hex-deco {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 2.0in;
+      height: auto;
+      opacity: 0.3;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* ── LOGO ENCABEZADO ── */
+    .header-logo {
+      position: absolute;
+      top: 0.15in;
+      left: 0.4in;
+      height: 1.2in;
+      /* Tamaño mediano estable */
+      width: auto;
+      z-index: 2;
+    }
+
+    /* Linea dorada eliminada */
+
+    /* ── PIE DE PÁGINA ── */
+
+    /* Franja tricolor alineada a la izquierda */
+    .footer-stripe {
+      position: absolute;
+      bottom: 0.6in;
+      /* Margen de seguridad para impresoras */
+      left: 0.4in;
+      /* Alineado con el logo */
+      width: 3in;
+      height: 8px;
+      display: flex;
+      z-index: 3;
+    }
+
+    .stripe-red {
+      flex: 1;
+      background: #f18c81;
+    }
+
+    .stripe-yel {
+      flex: 1;
+      background: #fdf5a3;
+    }
+
+    .stripe-green {
+      flex: 1;
+      background: #84bc9c;
+    }
+
+    /* Bloque de texto del pie: alineado a la derecha */
+    .footer-content {
+      position: absolute;
+      bottom: 0.6in;
+      /* Margen de seguridad para impresoras */
+      right: 0.4in;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      z-index: 3;
+    }
+
+    .footer-text-block {
+      text-align: right;
+      line-height: 1.25;
+    }
+
+    .footer-title {
+      font-size: 9pt;
+      font-weight: 900;
+      color: #000;
+      text-transform: uppercase;
+      display: block;
+    }
+
+    .footer-addr,
+    .footer-phone {
+      font-size: 8pt;
+      font-weight: 400;
+      color: #333;
+      display: block;
+    }
+
+    @media screen {
+
+      html,
+      body {
+        background: #777;
+        width: auto;
+        height: auto;
+        display: flex;
+        justify-content: center;
+        padding: 40px 20px;
+      }
+
+      .page {
+        box-shadow: 0 6px 40px rgba(0, 0, 0, 0.4);
+        flex-shrink: 0;
+      }
+    }
+
+    .content-body {
+      position: absolute;
+      top: 1.8in;
+      left: 0.8in;
+      right: 0.8in;
+      bottom: 1.2in;
+      color: #000;
+      line-height: 1.5;
+      z-index: 5;
+    }
+
+    .acta-title {
+      text-align: center;
+      font-size: 16pt;
+      font-weight: 900;
+      text-transform: uppercase;
+      margin-bottom: 25px;
+      border-bottom: 2px solid #000;
+      display: inline-block;
+      width: 100%;
+      padding-bottom: 8px;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 5px;
+      margin-bottom: 20px;
+      font-size: 9pt;
+    }
+
+    .info-label {
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      font-size: 8.5pt;
+    }
+
+    .items-table th {
+      background: #eee;
+      padding: 8px;
+      text-align: left;
+      border: 1px solid #000;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    .items-table td {
+      padding: 8px;
+      border: 1px solid #000;
+    }
+
+    .signatures {
+      margin-top: 60px;
+      display: flex;
+      justify-content: space-around;
+      text-align: center;
+      font-size: 8.5pt;
+    }
+
+    .signature-box {
+      width: 220px;
+      border-top: 1.5px solid #000;
+      padding-top: 10px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <div class="content-body" id="acta-content">
+      <!-- El contenido se inyectará aquí -->
+    </div>
+
+    <!-- LOGO INSTITUCIONAL -->
+    <img class="header-logo" src="logo.png" alt="Logo Institucional">
+
+    <!-- HEXÁGONOS decorativos -->
+    <img class="hex-deco"
+      src="data:image/png;base64,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"
+      alt="">
+
+    <!-- ── CONTENIDO DEL PIE ── -->
+    <div class="footer-content">
+      <div class="footer-text-block">
+        <span class="footer-title">MINISTERIO DE LA PRESIDENCIA</span>
+        <span class="footer-addr">Zona Central - Calle Ayacucho Esq. Potosí</span>
+        <span class="footer-phone">Teléfonos: +591 (2) 2184178</span>
+      </div>
+    </div>
+
+    <!-- FRANJA TRICOLOR -->
+    <div class="footer-stripe">
+      <div class="stripe-red"></div>
+      <div class="stripe-yel"></div>
+      <div class="stripe-green"></div>
+    </div>
+
+  </div>
+</body>
+
+</html>

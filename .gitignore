@@ -1,0 +1,35 @@
+# Dependencias
+node_modules/
+
+# Build generado
+dist/
+
+# Archivos de Wrangler (caché local)
+.wrangler/
+
+# Variables de entorno
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos temporales y scripts
+Plantilla_assets_sep;.csv
+build_log.txt
+debug.txt
+extract_from_file.js
+extract_old_design.js
+extracted_dna.txt
+extracted_template.txt
+final_dna.txt
+final_dna_utf8.txt
+import_activos.sql
+migrate.py
+old_bundle.js
+recovered_html.txt

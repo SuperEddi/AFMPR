@@ -1,0 +1,25 @@
+# Configuración para Cloudflare Pages y D1
+name = "activosvt1"
+compatibility_date = "2024-03-01"
+pages_build_output_dir = "dist"
+
+[vars]
+ADMIN_PASSWORD = "6925*"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "detalle_activos_tierras"
+database_id = "d5569fdb-8e4e-437d-9d14-470637c21756"
+migrations_dir = "sql"
+
+[[d1_databases]]
+binding = "DB_JUSTICIA"
+database_name = "db_justicia_activos"
+database_id = "734aa7f7-daae-4fc1-8328-eea112262778"
+migrations_dir = "sql"
+
+[[d1_databases]]
+binding = "DB_PRESIDENCIA" # Este nombre debe ser exacto
+database_name = "db_presidencia_activos"
+database_id = "7447ca5c-b339-468d-83ca-25d4042eb01c"
+migrations_dir = "sql"

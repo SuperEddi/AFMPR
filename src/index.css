@@ -1,0 +1,221 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* ── FUENTE GLOBAL: Consola / Monoespaciada ── */
+  font-family: 'Consolas', 'Courier New', 'Lucida Console', monospace;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* ── ESCALA TIPOGRÁFICA POR CONTEXTO ── */
+  --text-badge: 0.65rem;
+  /* badges, chips, estado             */
+  --text-label: 0.70rem;
+  /* labels de formulario, cabeceras   */
+  --text-table: 0.78rem;
+  /* filas de tabla, descripciones     */
+  --text-body: 0.875rem;
+  /* texto general del módulo          */
+  --text-card: 1.00rem;
+  /* título de tarjeta                 */
+  --text-section: 1.10rem;
+  /* título de sección / vista         */
+  --text-page: 1.30rem;
+  /* título principal de página        */
+  --text-kpi-sm: 1.60rem;
+  /* KPI pequeño (dashboard)           */
+  --text-kpi-lg: 2.20rem;
+  /* KPI grande / número destacado     */
+}
+
+/* ── CUERPO GLOBAL ── */
+body {
+  margin: 0;
+  min-width: 0;
+  min-height: 100dvh;
+  font-family: 'Consolas', 'Courier New', 'Lucida Console', monospace;
+  font-size: var(--text-body);
+  @apply bg-slate-50 text-slate-900;
+  overflow-x: hidden;
+  /* soporte para muesca y barra de inicio del iPhone */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* ── Propagar fuente a todos los elementos ── */
+*,
+*::before,
+*::after {
+  font-family: inherit;
+}
+
+#root {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+/* ── Scroll suave en contenedores overflow ── */
+.overflow-y-auto,
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Área segura iPhone (bottom) ── */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+
+/* ── Inputs y controles de formulario ── */
+input,
+select,
+textarea,
+button {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 16px !important;
+  /* evita zoom en iOS */
+}
+
+/* ── Jerarquía de títulos ── */
+h1 {
+  font-size: var(--text-page);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: var(--text-section);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+h3 {
+  font-size: var(--text-card);
+  font-weight: 700;
+}
+
+h4,
+h5,
+h6 {
+  font-size: var(--text-body);
+  font-weight: 700;
+}
+
+/* ── Tablas ── */
+table {
+  font-size: var(--text-table);
+}
+
+thead th {
+  font-size: var(--text-label);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+/* ── Labels ── */
+label {
+  font-size: var(--text-label);
+  letter-spacing: 0.05em;
+}
+
+/* ── Utilidades de tamaño de texto ── */
+.text-badge {
+  font-size: var(--text-badge) !important;
+}
+
+.text-label {
+  font-size: var(--text-label) !important;
+}
+
+.text-table {
+  font-size: var(--text-table) !important;
+}
+
+.text-body {
+  font-size: var(--text-body) !important;
+}
+
+.text-card {
+  font-size: var(--text-card) !important;
+}
+
+.text-section {
+  font-size: var(--text-section) !important;
+}
+
+.text-page {
+  font-size: var(--text-page) !important;
+}
+
+/* ── KPIs / Métricas del Dashboard ── */
+.kpi-sm {
+  font-size: var(--text-kpi-sm);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+.kpi-lg {
+  font-size: var(--text-kpi-lg);
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+/* ── Tap highlight para móvil ── */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Scrollbars personalizados ── */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 rounded-full;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400;
+}
+
+/* ── Animaciones suaves ── */
+.transition-all {
+  transition-duration: 200ms;
+}
+
+/* ── Textos muy pequeños legibles en móvil ── */
+@media (max-width: 390px) {
+  .text-\[10px\] {
+    font-size: 11px !important;
+  }
+
+  .text-\[9px\] {
+    font-size: 10px !important;
+  }
+
+  .text-\[8px\] {
+    font-size: 10px !important;
+  }
+}
+
+/* ── Evita overflow horizontal en toda la app ── */
+* {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
+}
