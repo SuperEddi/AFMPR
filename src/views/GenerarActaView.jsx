@@ -156,8 +156,9 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
     );
 };
 
-const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch }) => {
+const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, currentUser }) => {
     const [tipo, setTipo] = useState(tipoProp);
+    // ... (rest of the state remains the same)
     const [step, setStep] = useState(1);
     const [usuarios, setUsuarios] = useState([]);
     const [activosList, setActivosList] = useState([]);
@@ -315,7 +316,8 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch }) 
                         unidad: selectedUser?.unidad,
                         oficina: selectedUser?.oficina,
                         piso: selectedUser?.piso,
-                        appendToActaId: item.appendId
+                        appendToActaId: item.appendId,
+                        realizado_por: currentUser?.nombre
                     })
                 });
 

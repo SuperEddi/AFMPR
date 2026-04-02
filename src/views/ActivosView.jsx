@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Search, Plus, Download, Upload, Edit2, X, Archive, UserCheck, Monitor, Laptop, Tablet, Printer, Server, HardDrive, Keyboard, Mouse, Package } from 'lucide-react';
 import { AppDialog, useDialog } from '../components/AppDialog';
 
@@ -7,6 +7,20 @@ const getStatusStyle = (estado) => ({
     'Asignado': 'bg-blue-50 text-blue-700 border-blue-100',
     'Mantenimiento': 'bg-amber-50 text-amber-700 border-amber-100',
 }[estado] || 'bg-slate-100 text-slate-600 border-slate-200');
+
+const INST_CONFIG = {
+    TIERRAS: { pill: 'bg-emerald-600 text-white', border: 'border-l-4 border-l-emerald-400', rowBg: 'hover:bg-emerald-50/50' },
+    JUSTICIA: { pill: 'bg-blue-600 text-white', border: 'border-l-4 border-l-blue-500', rowBg: 'hover:bg-blue-50/40' },
+    PRESIDENCIA: { pill: 'bg-slate-800 text-white', border: 'border-l-4 border-l-slate-500', rowBg: 'hover:bg-slate-100/60' },
+};
+const getInstitutionStyle = (inst) => {
+    const cfg = INST_CONFIG[(inst || '').toUpperCase()];
+    return cfg ? cfg.pill : 'bg-slate-400 text-white';
+};
+const getRowStyle = (inst) => {
+    const cfg = INST_CONFIG[(inst || '').toUpperCase()];
+    return cfg ? `${cfg.border} ${cfg.rowBg}` : 'hover:bg-slate-50';
+};
 
 const getIcon = (desc) => {
     const d = (desc || '').toLowerCase();
@@ -32,25 +46,22 @@ const ActivosView = ({ authFetch = fetch }) => {
     const fileInputRef = useRef(null);
     const { showAlert, dialogProps } = useDialog();
 
-    const fetchActivos = async (silent = false) => {
-        if (!silent) setLoading(prev => prev); // no-op to avoid showing spinner
+    const fetchActivos = useCallback(async (silent = false) => {
+        if (!silent) setLoading(true);
         try {
             const res = await authFetch('/api/activos');
-            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-            setActivos(await res.json());
-        } catch (err) {
-
-        }
+            if (res.ok) setActivos(await res.json());
+        } catch (err) { }
         setLoading(false);
-    };
+    }, [authFetch]);
 
-    useEffect(() => { fetchActivos(); }, [authFetch]);
+    useEffect(() => { fetchActivos(); }, [fetchActivos]);
 
     useEffect(() => {
-        const handler = () => fetchActivos(true); // silent refresh
+        const handler = () => fetchActivos(true);
         window.addEventListener('data-updated', handler);
         return () => window.removeEventListener('data-updated', handler);
-    }, []);
+    }, [fetchActivos]);
 
     const handleInputChange = e => setFormData(p => ({ ...p, [e.target.name]: e.target.value }));
 
@@ -141,13 +152,19 @@ const ActivosView = ({ authFetch = fetch }) => {
         reader.readAsText(file);
     };
 
-    const filtered = activos.filter(a =>
-        (a.codigo_activo || '').toLowerCase().includes(filter.toLowerCase()) ||
-        (a.descripcion || '').toLowerCase().includes(filter.toLowerCase()) ||
-        (a.serie || '').toLowerCase().includes(filter.toLowerCase()) ||
-        (a.responsable || '').toLowerCase().includes(filter.toLowerCase()) ||
-        (a.oficina || '').toLowerCase().includes(filter.toLowerCase())
-    );
+    const filtered = useMemo(() => {
+        const searchLower = filter.toLowerCase().trim();
+        if (!searchLower) return activos;
+
+        return activos.filter(a => (
+            (a.codigo_activo || '').toLowerCase().includes(searchLower) ||
+            (a.descripcion || '').toLowerCase().includes(searchLower) ||
+            (a.serie || '').toLowerCase().includes(searchLower) ||
+            (a.responsable || '').toLowerCase().includes(searchLower) ||
+            (a.oficina || '').toLowerCase().includes(searchLower) ||
+            (a.institucion || '').toLowerCase().includes(searchLower)
+        ));
+    }, [activos, filter]);
 
     return (
         <>
@@ -214,14 +231,21 @@ const ActivosView = ({ authFetch = fetch }) => {
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
                                         {filtered.slice(0, 200).map(a => (
-                                            <tr key={a.id} className="hover:bg-slate-50 transition-colors">
+                                            <tr key={`${a.institucion || 'x'}-${a.id}`} className={`transition-colors text-sm ${getRowStyle(a.institucion)}`}>
                                                 <td className="px-4 py-2">
                                                     <div className="flex items-center gap-2">
                                                         <div className="p-1 bg-slate-100 text-slate-400 rounded-lg flex-shrink-0">
                                                             {getIcon(a.descripcion)}
                                                         </div>
                                                         <div>
-                                                            <div className="font-bold text-slate-800 text-xs font-mono uppercase tracking-tight">{a.codigo_activo}</div>
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="font-bold text-slate-800 text-xs font-mono uppercase tracking-tight">{a.codigo_activo}</div>
+                                                                {a.institucion && (
+                                                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide ${getInstitutionStyle(a.institucion)}`}>
+                                                                        {a.institucion}
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                             <div className="text-[10px] text-slate-400 line-clamp-1 max-w-[280px]">{a.descripcion}</div>
                                                         </div>
                                                     </div>
@@ -273,7 +297,14 @@ const ActivosView = ({ authFetch = fetch }) => {
                                         </div>
                                         <div className="flex-1 min-w-0 space-y-1">
                                             <div className="flex items-center justify-between gap-2">
-                                                <span className="font-black text-slate-900 text-xs font-mono uppercase tracking-tight">{a.codigo_activo}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-black text-slate-900 text-xs font-mono uppercase tracking-tight">{a.codigo_activo}</span>
+                                                    {a.institucion && (
+                                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${getInstitutionStyle(a.institucion)}`}>
+                                                            {a.institucion}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <div className="flex gap-2 items-center">
                                                     <span className={`px-2 py-0.5 rounded-full text-[9px] font-black border uppercase ${getStatusStyle(a.estado_actual)}`}>
                                                         {a.estado_actual}

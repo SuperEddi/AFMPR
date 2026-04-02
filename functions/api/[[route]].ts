@@ -92,16 +92,39 @@ app.use('*', async (c, next) => {
 // --- ESTADISTICAS ---
 app.get('/stats', async (c) => {
     try {
-        const stats = await getDB(c).prepare(`
-            SELECT 
-                COUNT(*) as total,
-                COALESCE(SUM(CASE WHEN estado_actual = 'Asignado' THEN 1 ELSE 0 END), 0) as asignados,
-                COALESCE(SUM(CASE WHEN estado_actual = 'Disponible' THEN 1 ELSE 0 END), 0) as disponibles,
-                COALESCE(SUM(CASE WHEN estado_actual = 'Mantenimiento' THEN 1 ELSE 0 END), 0) as mantenimiento
-            FROM activos
-        `).first();
         const institution = c.req.header('x-institution') || 'tierras';
-        return c.json({ ...(stats || { total: 0, asignados: 0, disponibles: 0, mantenimiento: 0 }), institucion: institution.toUpperCase() });
+
+        const fetchDBStats = async (db: D1Database) => {
+            const s = await db.prepare(`
+                SELECT 
+                    COUNT(*) as total,
+                    COALESCE(SUM(CASE WHEN estado_actual = 'Asignado' THEN 1 ELSE 0 END), 0) as asignados,
+                    COALESCE(SUM(CASE WHEN estado_actual = 'Disponible' THEN 1 ELSE 0 END), 0) as disponibles,
+                    COALESCE(SUM(CASE WHEN estado_actual = 'Mantenimiento' THEN 1 ELSE 0 END), 0) as mantenimiento
+                FROM activos
+            `).first();
+            return s || { total: 0, asignados: 0, disponibles: 0, mantenimiento: 0 };
+        };
+
+        if (institution === 'consolidado') {
+            const [s1, s2, s3] = await Promise.all([
+                fetchDBStats(c.env.DB),
+                fetchDBStats(c.env.DB_JUSTICIA),
+                fetchDBStats(c.env.DB_PRESIDENCIA)
+            ]);
+
+            const merged = {
+                total: Number(s1.total) + Number(s2.total) + Number(s3.total),
+                asignados: Number(s1.asignados) + Number(s2.asignados) + Number(s3.asignados),
+                disponibles: Number(s1.disponibles) + Number(s2.disponibles) + Number(s3.disponibles),
+                mantenimiento: Number(s1.mantenimiento) + Number(s2.mantenimiento) + Number(s3.mantenimiento),
+                institucion: 'CONSOLIDADO'
+            };
+            return c.json(merged);
+        }
+
+        const stats = await fetchDBStats(getDB(c));
+        return c.json({ ...stats, institucion: institution.toUpperCase() });
     } catch (e: any) {
         console.error("Error en query /stats:", e.message);
         return c.json({ error: e.message }, 500);
@@ -110,8 +133,26 @@ app.get('/stats', async (c) => {
 
 // --- USUARIOS ---
 
+// --- USUARIOS ---
+
 app.get('/usuarios', async (c) => {
-    const { results } = await getDB(c).prepare('SELECT * FROM usuarios ORDER BY nombre_completo ASC').all();
+    const institution = c.req.header('x-institution') || 'tierras';
+
+    const fetchDBUsuarios = async (db: D1Database, instName: string) => {
+        const { results } = await db.prepare('SELECT * FROM usuarios ORDER BY nombre_completo ASC').all();
+        return results.map(r => ({ ...r, institucion: instName }));
+    };
+
+    if (institution === 'consolidado') {
+        const [r1, r2, r3] = await Promise.all([
+            fetchDBUsuarios(c.env.DB, 'TIERRAS'),
+            fetchDBUsuarios(c.env.DB_JUSTICIA, 'JUSTICIA'),
+            fetchDBUsuarios(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
+        ]);
+        return c.json([...r1, ...r2, ...r3]);
+    }
+
+    const results = await fetchDBUsuarios(getDB(c), institution.toUpperCase());
     return c.json(results);
 });
 
@@ -149,23 +190,34 @@ app.put('/usuarios/:id', async (c) => {
 
 // --- ACTIVOS ---
 app.get('/activos', async (c) => {
+    const institution = c.req.header('x-institution') || 'tierras';
     const estado = c.req.query('estado');
-    let query = `
-        SELECT a.*, u.nombre_completo as responsable, 
-               COALESCE(a.oficina, u.oficina) as oficina
-        FROM activos a
-        LEFT JOIN usuarios u ON a.usuario_actual_id = u.id
-    `;
 
-    if (estado) {
-        query += ` WHERE a.estado_actual = ? `;
+    const fetchDBActivos = async (db: D1Database, instName: string) => {
+        let query = `
+            SELECT a.*, u.nombre_completo as responsable, 
+                   COALESCE(a.oficina, u.oficina) as oficina
+            FROM activos a
+            LEFT JOIN usuarios u ON a.usuario_actual_id = u.id
+        `;
+        if (estado) query += ` WHERE a.estado_actual = ? `;
+        query += ` ORDER BY a.codigo_activo ASC `;
+
+        const stmt = db.prepare(query);
+        const { results } = await (estado ? stmt.bind(estado) : stmt).all();
+        return results.map(r => ({ ...r, institucion: instName }));
+    };
+
+    if (institution === 'consolidado') {
+        const [r1, r2, r3] = await Promise.all([
+            fetchDBActivos(c.env.DB, 'TIERRAS'),
+            fetchDBActivos(c.env.DB_JUSTICIA, 'JUSTICIA'),
+            fetchDBActivos(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
+        ]);
+        return c.json([...r1, ...r2, ...r3]);
     }
 
-    query += ` ORDER BY a.codigo_activo ASC `;
-
-    const stmt = getDB(c).prepare(query);
-    const { results } = await (estado ? stmt.bind(estado) : stmt).all();
-
+    const results = await fetchDBActivos(getDB(c), institution.toUpperCase());
     return c.json(results);
 });
 
@@ -261,23 +313,40 @@ app.get('/activos/disponibles', async (c) => {
 // --- ACTIVOS AGRUPADOS (Historial Consolidado) ---
 app.get('/activos/agrupados', async (c) => {
     try {
-        const { results } = await getDB(c).prepare(`
-            SELECT a.id, a.codigo_activo, a.descripcion, a.estado_actual,
-                   a.unidad as a_unidad, a.oficina as a_oficina, a.piso as a_piso,
-                   (SELECT ac.id FROM detalles_acta da JOIN actas ac ON da.acta_id = ac.id WHERE da.activo_id = a.id AND ac.tipo_acta='Asignación' ORDER BY ac.fecha_emision DESC LIMIT 1) as last_acta_id,
-                   (SELECT da.estado_fisico FROM detalles_acta da JOIN actas ac ON da.acta_id = ac.id WHERE da.activo_id = a.id AND ac.tipo_acta='Asignación' ORDER BY ac.fecha_emision DESC LIMIT 1) as estado_fisico,
-                   (SELECT ac2.observaciones FROM actas ac2 WHERE ac2.usuario_id = u.id AND ac2.tipo_acta='Asignación' ORDER BY ac2.fecha_emision DESC LIMIT 1) as observaciones,
-                   u.id as usuario_id, u.nombre_completo, u.ci, u.cargo, u.unidad as u_unidad, u.oficina as u_oficina, u.piso as u_piso
-            FROM activos a
-            JOIN usuarios u ON a.usuario_actual_id = u.id
-            WHERE a.estado_actual = 'Asignado'
-            ORDER BY u.nombre_completo ASC, a_oficina ASC, a.codigo_activo ASC
-        `).all();
+        const institution = c.req.header('x-institution') || 'tierras';
+
+        const fetchDBAgrupados = async (db: D1Database, instName: string) => {
+            const { results } = await db.prepare(`
+                SELECT a.id, a.codigo_activo, a.descripcion, a.estado_actual,
+                       a.unidad as a_unidad, a.oficina as a_oficina, a.piso as a_piso,
+                       (SELECT ac.id FROM detalles_acta da JOIN actas ac ON da.acta_id = ac.id WHERE da.activo_id = a.id AND ac.tipo_acta='Asignación' ORDER BY ac.fecha_emision DESC LIMIT 1) as last_acta_id,
+                       (SELECT da.estado_fisico FROM detalles_acta da JOIN actas ac ON da.acta_id = ac.id WHERE da.activo_id = a.id AND ac.tipo_acta='Asignación' ORDER BY ac.fecha_emision DESC LIMIT 1) as estado_fisico,
+                       (SELECT ac2.observaciones FROM actas ac2 WHERE ac2.usuario_id = u.id AND ac2.tipo_acta='Asignación' ORDER BY ac2.fecha_emision DESC LIMIT 1) as observaciones,
+                       u.id as usuario_id, u.nombre_completo, u.ci, u.cargo, u.unidad as u_unidad, u.oficina as u_oficina, u.piso as u_piso
+                FROM activos a
+                JOIN usuarios u ON a.usuario_actual_id = u.id
+                WHERE a.estado_actual = 'Asignado'
+                ORDER BY u.nombre_completo ASC, a_oficina ASC, a.codigo_activo ASC
+            `).all();
+            return results.map(r => ({ ...r, institucion: instName }));
+        };
+
+        let allResults = [];
+        if (institution === 'consolidado') {
+            const [r1, r2, r3] = await Promise.all([
+                fetchDBAgrupados(c.env.DB, 'TIERRAS'),
+                fetchDBAgrupados(c.env.DB_JUSTICIA, 'JUSTICIA'),
+                fetchDBAgrupados(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
+            ]);
+            allResults = [...r1, ...r2, ...r3];
+        } else {
+            allResults = await fetchDBAgrupados(getDB(c), institution.toUpperCase());
+        }
 
         // Agrupación en memoria (Responsable -> Oficina -> Activos)
         const mapPersonas = new Map();
 
-        for (const row of results) {
+        for (const row of allResults as any[]) {
             const ci = row.ci;
             if (!mapPersonas.has(ci)) {
                 mapPersonas.set(ci, {
@@ -285,19 +354,17 @@ app.get('/activos/agrupados', async (c) => {
                     ci: row.ci,
                     nombre_completo: row.nombre_completo,
                     cargo: row.cargo,
+                    institucion: row.institucion,
                     ubicaciones: new Map()
                 });
             }
 
-            const persona = mapPersonas.get(ci);
+            const persona = mapPersonas.get(ci) as any;
 
-            // Priorizamos ubicación del activo, si no tiene, la del usuario
             const unidad = row.a_unidad || row.u_unidad;
             const oficina = row.a_oficina || row.u_oficina;
             const piso = row.a_piso || row.u_piso;
 
-            // La clave incluye el acta_id para que distintos números de acta
-            // generen grupos separados aunque tengan el mismo responsable y ubicación
             const keyOficina = `${unidad || ''}|${oficina || ''}|${piso || ''}|${row.last_acta_id || ''}`;
 
             if (!persona.ubicaciones.has(keyOficina)) {
@@ -319,7 +386,8 @@ app.get('/activos/agrupados', async (c) => {
                 descripcion: row.descripcion,
                 estado_actual: row.estado_actual,
                 estado_fisico: row.estado_fisico || 'Bueno',
-                last_acta_id: row.last_acta_id
+                last_acta_id: row.last_acta_id,
+                institucion: row.institucion
             });
         }
 
@@ -361,7 +429,7 @@ app.get('/actas', async (c) => {
 
 app.post('/actas', async (c) => {
     const body = await c.req.json();
-    const { tipo_acta, usuario_id, activos_seleccionados, observaciones, unidad, oficina, piso, appendToActaId } = body;
+    const { tipo_acta, usuario_id, activos_seleccionados, observaciones, unidad, oficina, piso, appendToActaId, realizado_por } = body;
 
     if (!usuario_id) {
         return c.json({ error: "Faltan datos obligatorios", message: "El ID del usuario es requerido para generar el acta." }, 400);
@@ -377,8 +445,8 @@ app.post('/actas', async (c) => {
         if (!actaId) {
             // 1. Crear el acta con snapshot de ubicación si no hay ID de acta para aumentar
             const batchResult = await getDB(c).batch([
-                getDB(c).prepare('INSERT INTO actas (tipo_acta, usuario_id, observaciones, unidad, oficina, piso) VALUES (?, ?, ?, ?, ?, ?)')
-                    .bind(tipo_acta, usuario_id, observaciones ?? null, unidad ?? null, oficina ?? null, piso ?? null)
+                getDB(c).prepare('INSERT INTO actas (tipo_acta, usuario_id, observaciones, unidad, oficina, piso, realizado_por) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                    .bind(tipo_acta, usuario_id, observaciones ?? null, unidad ?? null, oficina ?? null, piso ?? null, realizado_por ?? null)
             ]);
             actaId = batchResult[0].meta.last_row_id;
         }
@@ -670,6 +738,165 @@ app.delete('/api/auditorias/usuario/:userId/activo/:activoId', async (c) => {
         return c.json({ success: true });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
+    }
+});
+
+
+// ============================================================
+// BITÁCORA DE MOVIMIENTOS
+// ============================================================
+app.get('/bitacora', async (c) => {
+    try {
+        const limit = parseInt(c.req.query('limit') || '200');
+        const filter = c.req.query('filter') || '';
+
+        const query = `
+            SELECT
+                a.codigo_activo,
+                a.descripcion,
+                u.nombre_completo  AS responsable,
+                ac.tipo_acta,
+                ac.fecha_emision,
+                ac.realizado_por,
+                ac.observaciones,
+                a.oficina,
+                a.piso,
+                ac.id              AS acta_id
+            FROM detalles_acta da
+            JOIN actas ac       ON da.acta_id  = ac.id
+            JOIN activos a      ON da.activo_id = a.id
+            LEFT JOIN usuarios u ON ac.usuario_id = u.id
+            ORDER BY ac.fecha_emision DESC, ac.id DESC
+            LIMIT ?
+        `;
+
+        const { results } = await getDB(c).prepare(query).bind(limit).all();
+        return c.json(results || []);
+    } catch (e: any) {
+        return c.json({ error: formatError(e) }, 500);
+    }
+});
+
+// ============================================================
+// AUTENTICACIÓN Y GESTIÓN DE CUENTAS DE SISTEMA
+// ============================================================
+
+// Helper: SHA-256 usando Web Crypto API (disponible en Cloudflare Workers)
+async function hashPassword(password: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Login — verifica credenciales y devuelve info del usuario
+app.post('/auth/login', async (c) => {
+    try {
+        const { username, password } = await c.req.json();
+        if (!username || !password) return c.json({ error: 'Usuario y contraseña requeridos.' }, 400);
+
+        // Buscar en la DB de Tierras (DB maestra del sistema — login es global)
+        const hash = await hashPassword(password);
+        const user = await c.env.DB.prepare(
+            'SELECT id, username, nombre, rol, activo FROM system_users WHERE username = ? AND password_hash = ?'
+        ).bind(username.toLowerCase().trim(), hash).first();
+
+        if (!user) return c.json({ error: 'Usuario o contraseña incorrectos.' }, 401);
+        if (!user.activo) return c.json({ error: 'Esta cuenta está desactivada. Contacte al administrador.' }, 403);
+
+        return c.json({ user });
+    } catch (e: any) {
+        return c.json({ error: formatError(e) }, 500);
+    }
+});
+
+// Crear tabla system_users si no existe (migración automática)
+app.post('/auth/migrate', async (c) => {
+    try {
+        await getDB(c).prepare(`
+            CREATE TABLE IF NOT EXISTS system_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                nombre TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                rol TEXT CHECK(rol IN ('admin', 'tecnico')) DEFAULT 'tecnico',
+                activo INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        `).run();
+
+        // Columna realizado_por en actas
+        try { await getDB(c).prepare('ALTER TABLE actas ADD COLUMN realizado_por TEXT').run(); } catch { }
+
+        // Seed admin por defecto
+        const hash = await hashPassword('admin123');
+        await getDB(c).prepare(
+            'INSERT OR IGNORE INTO system_users (username, nombre, password_hash, rol) VALUES (?, ?, ?, ?)'
+        ).bind('admin', 'Administrador', hash, 'admin').run();
+
+        return c.json({ success: true, message: 'Migración completada.' });
+    } catch (e: any) {
+        return c.json({ error: formatError(e) }, 500);
+    }
+});
+
+// Listar cuentas del sistema (admin only — validación en frontend)
+app.get('/system-users', async (c) => {
+    try {
+        const users = await getDB(c).prepare(
+            'SELECT id, username, nombre, rol, activo, created_at FROM system_users ORDER BY rol DESC, nombre ASC'
+        ).all();
+        return c.json(users.results || []);
+    } catch (e: any) {
+        return c.json({ error: formatError(e) }, 500);
+    }
+});
+
+// Crear cuenta del sistema
+app.post('/system-users', async (c) => {
+    try {
+        const { username, nombre, password, rol } = await c.req.json();
+        if (!username || !nombre || !password) return c.json({ error: 'Faltan campos requeridos.' }, 400);
+        const hash = await hashPassword(password);
+        await getDB(c).prepare(
+            'INSERT INTO system_users (username, nombre, password_hash, rol) VALUES (?, ?, ?, ?)'
+        ).bind(username.toLowerCase().trim(), nombre, hash, rol || 'tecnico').run();
+        return c.json({ success: true });
+    } catch (e: any) {
+        return c.json({ error: formatError(e) }, 400);
+    }
+});
+
+// Actualizar cuenta del sistema (rol, nombre, contraseña, activo)
+app.put('/system-users/:id', async (c) => {
+    try {
+        const id = c.req.param('id');
+        const { nombre, password, rol, activo } = await c.req.json();
+
+        if (password) {
+            const hash = await hashPassword(password);
+            await getDB(c).prepare(
+                'UPDATE system_users SET nombre = ?, password_hash = ?, rol = ?, activo = ? WHERE id = ?'
+            ).bind(nombre, hash, rol, activo !== undefined ? activo : 1, id).run();
+        } else {
+            await getDB(c).prepare(
+                'UPDATE system_users SET nombre = ?, rol = ?, activo = ? WHERE id = ?'
+            ).bind(nombre, rol, activo !== undefined ? activo : 1, id).run();
+        }
+        return c.json({ success: true });
+    } catch (e: any) {
+        return c.json({ error: formatError(e) }, 400);
+    }
+});
+
+// Eliminar cuenta del sistema
+app.delete('/system-users/:id', async (c) => {
+    try {
+        const id = c.req.param('id');
+        await getDB(c).prepare('DELETE FROM system_users WHERE id = ?').bind(id).run();
+        return c.json({ success: true });
+    } catch (e: any) {
+        return c.json({ error: formatError(e) }, 500);
     }
 });
 

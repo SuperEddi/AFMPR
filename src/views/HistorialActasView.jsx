@@ -1,6 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { History, User, Calendar, FileText, Printer, Search, RefreshCw, ChevronDown, ChevronUp, MapPin, Package, AlertCircle, ClipboardPlus, Undo2, PenLine, Trash2, Pencil, CheckCircle, Hash, Briefcase, Building2 } from 'lucide-react';
 import { AppDialog, useDialog } from '../components/AppDialog';
+
+const getInstitutionStyle = (inst) => {
+    const i = (inst || '').toUpperCase();
+    if (i === 'TIERRAS') return 'bg-emerald-500 text-white shadow-sm shadow-emerald-200';
+    if (i === 'JUSTICIA') return 'bg-blue-600 text-white shadow-sm shadow-blue-200';
+    if (i === 'PRESIDENCIA') return 'bg-slate-800 text-white shadow-sm shadow-slate-200';
+    return 'bg-slate-400 text-white';
+};
 
 const HistorialActasView = ({ authFetch = fetch }) => {
     const [agrupados, setAgrupados] = useState([]);
@@ -119,7 +127,7 @@ const HistorialActasView = ({ authFetch = fetch }) => {
         }
     };
 
-    const fetchHistorial = async (silent = false) => {
+    const fetchHistorial = useCallback(async (silent = false) => {
         if (!silent) setLoading(true);
         try {
             const res = await authFetch('/api/activos/agrupados');
@@ -129,9 +137,9 @@ const HistorialActasView = ({ authFetch = fetch }) => {
         } catch (err) {
 
         } finally { if (!silent) setLoading(false); }
-    };
+    }, [authFetch]);
 
-    const fetchActas = async () => {
+    const fetchActas = useCallback(async () => {
         setLoadingActas(true);
         try {
             const res = await authFetch('/api/actas');
@@ -140,12 +148,12 @@ const HistorialActasView = ({ authFetch = fetch }) => {
         } catch (err) {
 
         } finally { setLoadingActas(false); }
-    };
+    }, [authFetch]);
 
     useEffect(() => {
         fetchHistorial();
         fetchActas();
-    }, [authFetch]);
+    }, [fetchHistorial, fetchActas]);
 
     useEffect(() => {
         const handler = () => {
@@ -154,7 +162,7 @@ const HistorialActasView = ({ authFetch = fetch }) => {
         };
         window.addEventListener('data-updated', handler);
         return () => window.removeEventListener('data-updated', handler);
-    }, []);
+    }, [fetchHistorial, fetchActas]);
 
     const handlePrintConsolidado = async (persona, ubicacion, specificActivos = null) => {
         const activosParaImprimir = specificActivos || ubicacion.activos || [];
@@ -469,7 +477,14 @@ const HistorialActasView = ({ authFetch = fetch }) => {
                                                 {(persona.nombre_completo || '?').charAt(0).toUpperCase()}
                                             </div>
                                             <div>
-                                                <div className="font-black text-slate-800 text-sm sm:text-base">{persona.nombre_completo}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="font-black text-slate-800 text-sm sm:text-base">{persona.nombre_completo}</div>
+                                                    {persona.institucion && (
+                                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${getInstitutionStyle(persona.institucion)}`}>
+                                                            {persona.institucion}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <div className="flex gap-2 text-[10px] sm:text-xs text-slate-500 font-medium mt-0.5">
                                                     <span className="font-mono text-slate-400">CI {persona.ci}</span>
                                                     <span>·</span>
@@ -707,9 +722,16 @@ const HistorialActasView = ({ authFetch = fetch }) => {
                                                             />
                                                         </td>
                                                         <td className="px-4 py-4 whitespace-nowrap align-top">
-                                                            <span className="font-mono text-[10px] sm:text-xs font-black text-slate-700 bg-slate-100 px-2 py-1 rounded-lg uppercase border border-slate-200">
-                                                                {a.codigo_activo}
-                                                            </span>
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="font-mono text-[10px] sm:text-xs font-black text-slate-700 bg-slate-100 px-2 py-1 rounded-lg uppercase border border-slate-200">
+                                                                    {a.codigo_activo}
+                                                                </span>
+                                                                {a.institucion && (
+                                                                    <span className={`text-[7px] font-black px-1 py-0.5 rounded uppercase tracking-tighter w-fit ${getInstitutionStyle(a.institucion)}`}>
+                                                                        {a.institucion}
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </td>
                                                         <td className="px-4 py-4 align-top">
                                                             <div className="text-[11px] sm:text-xs text-slate-600 leading-relaxed font-medium max-w-md">

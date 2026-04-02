@@ -8,11 +8,13 @@ import {
     LogOut,
     X,
     Database,
-    ClipboardCheck
+    ClipboardCheck,
+    ShieldCheck,
+    BookOpen
 } from 'lucide-react';
 
-const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
-    const menuItems = [
+const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen, currentUser, onLogout }) => {
+    const allMenuItems = [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-indigo-400', activeBg: 'bg-indigo-500/10', activeText: 'text-indigo-400' },
         { id: 'usuarios', label: 'Gestión Usuarios', icon: Users, color: 'text-emerald-400', activeBg: 'bg-emerald-500/10', activeText: 'text-emerald-400' },
         { id: 'activos', label: 'Inventario', icon: Package, color: 'text-amber-400', activeBg: 'bg-amber-500/10', activeText: 'text-amber-400' },
@@ -20,7 +22,11 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
         { id: 'migraciones', label: 'Migraciones', icon: Database, color: 'text-violet-400', activeBg: 'bg-violet-500/10', activeText: 'text-violet-400' },
         { id: 'generar', label: 'Generar Acta', icon: FilePlus, color: 'text-rose-400', activeBg: 'bg-rose-500/10', activeText: 'text-rose-400' },
         { id: 'historial', label: 'Historial Actas', icon: History, color: 'text-cyan-400', activeBg: 'bg-cyan-500/10', activeText: 'text-cyan-400' },
+        { id: 'bitacora', label: 'Bitácora', icon: BookOpen, color: 'text-violet-300', activeBg: 'bg-violet-500/10', activeText: 'text-violet-300' },
+        { id: 'accesos', label: 'Gestión de Accesos', icon: ShieldCheck, color: 'text-amber-300', activeBg: 'bg-amber-500/10', activeText: 'text-amber-300', adminOnly: true },
     ];
+
+    const menuItems = allMenuItems.filter(item => !item.adminOnly || currentUser?.rol === 'admin');
 
     const handleNavClick = (id) => {
         setActiveTab(id);
@@ -48,12 +54,12 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
                 <div className="px-6 pt-8 pb-6 flex justify-between items-center flex-shrink-0" style={{ paddingTop: 'max(2rem, env(safe-area-inset-top, 2rem))' }}>
                     <div>
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-primary-500 rounded-xl flex items-center justify-center shadow-lg shadow-primary-500/20">
-                                <Package size={22} className="text-white" />
+                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-lg shadow-white/10 overflow-hidden p-1">
+                                <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                             </div>
                             <div>
-                                <h1 className="text-lg font-black tracking-tight leading-none text-white">
-                                    Activos<span className="text-primary-400">Fix</span>
+                                <h1 className="text-[15px] font-black tracking-tight leading-none text-white uppercase">
+                                    Activos<br /><span className="text-primary-400">Presidencia</span>
                                 </h1>
                             </div>
                         </div>
@@ -101,7 +107,21 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
                 </nav>
 
                 <div className="px-4 pb-6 border-t border-slate-800/30 flex-shrink-0 pt-4" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 1.5rem))' }}>
-                    <button className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-red-400 hover:bg-red-400/5 rounded-2xl transition-all duration-300 group">
+                    {/* User info */}
+                    {currentUser && (
+                        <div className="flex items-center gap-3 px-4 py-3 mb-2">
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black text-white flex-shrink-0 ${currentUser.rol === 'admin' ? 'bg-amber-500' : 'bg-blue-600'}`}>
+                                {currentUser.nombre?.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                                <p className="text-xs font-bold text-white truncate">{currentUser.nombre}</p>
+                                <p className="text-[10px] text-slate-400 font-medium capitalize">{currentUser.rol === 'admin' ? 'Administrador' : 'Técnico'}</p>
+                            </div>
+                        </div>
+                    )}
+                    <button
+                        onClick={onLogout}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-red-400 hover:bg-red-400/5 rounded-2xl transition-all duration-300 group">
                         <div className="p-2 bg-slate-800/50 rounded-xl group-hover:bg-red-400/10 transition-colors">
                             <LogOut size={18} />
                         </div>

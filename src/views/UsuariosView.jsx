@@ -1,6 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Search, Edit2, UserPlus, X, Users, MapPin, Briefcase, Fingerprint, Building } from 'lucide-react';
 import { AppDialog, useDialog } from '../components/AppDialog';
+
+const INST_CONFIG = {
+    TIERRAS: { pill: 'bg-emerald-600 text-white', border: 'border-l-4 border-l-emerald-400', rowBg: '' },
+    JUSTICIA: { pill: 'bg-blue-600 text-white', border: 'border-l-4 border-l-blue-500', rowBg: '' },
+    PRESIDENCIA: { pill: 'bg-slate-800 text-white', border: 'border-l-4 border-l-slate-500', rowBg: '' },
+};
+const getInstitutionStyle = (inst) => {
+    const cfg = INST_CONFIG[(inst || '').toUpperCase()];
+    return cfg ? cfg.pill : 'bg-slate-400 text-white';
+};
+const getRowBorder = (inst) => {
+    const cfg = INST_CONFIG[(inst || '').toUpperCase()];
+    return cfg ? cfg.border : '';
+};
 
 const UsuariosView = ({ authFetch = fetch }) => {
     const [usuarios, setUsuarios] = useState([]);
@@ -14,25 +28,35 @@ const UsuariosView = ({ authFetch = fetch }) => {
     });
     const { showAlert, dialogProps } = useDialog();
 
-    const fetchUsuarios = async (silent = false) => {
-        if (!silent) setLoading(usuarios.length === 0);
+    const fetchUsuarios = useCallback(async (silent = false) => {
+        if (!silent) setLoading(true);
         try {
             const res = await authFetch('/api/usuarios');
             if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-            setUsuarios(await res.json());
+            const data = await res.json();
+            setUsuarios(Array.isArray(data) ? data : []);
         } catch (err) {
-
+            setUsuarios([]);
         }
         setLoading(false);
-    };
+    }, [authFetch]);
 
-    useEffect(() => { fetchUsuarios(); }, [authFetch]);
+    // Carga inicial y cuando cambia la institución (authFetch cambia)
+    useEffect(() => {
+        setUsuarios([]);   // Limpia lista inmediatamente al cambiar de institución
+        setFilter('');     // Resetea la búsqueda
+        fetchUsuarios(false);
+    }, [fetchUsuarios]);
 
     useEffect(() => {
-        const handler = () => fetchUsuarios(true);
+        const handler = () => {
+            setUsuarios([]);
+            setFilter('');
+            fetchUsuarios(false);
+        };
         window.addEventListener('data-updated', handler);
         return () => window.removeEventListener('data-updated', handler);
-    }, []);
+    }, [fetchUsuarios]);
 
     const handleInputChange = e => setFormData(p => ({ ...p, [e.target.name]: e.target.value }));
 
@@ -74,11 +98,32 @@ const UsuariosView = ({ authFetch = fetch }) => {
         }
     };
 
-    const filtered = usuarios.filter(u =>
-        u.nombre_completo.toLowerCase().includes(filter.toLowerCase()) ||
-        u.ci.includes(filter) ||
-        (u.unidad || '').toLowerCase().includes(filter.toLowerCase())
-    );
+    const filtered = useMemo(() => {
+        const term = (filter || '').toLowerCase().trim();
+        if (!term) return usuarios;
+
+        return usuarios.filter(u => {
+            const name = (u.nombre_completo || '').toLowerCase();
+            const ci = String(u.ci || '').toLowerCase();
+            const cargo = (u.cargo || '').toLowerCase();
+            const unidad = (u.unidad || '').toLowerCase();
+            const inst = (u.institucion || '').toLowerCase();
+            const oficina = (u.oficina || '').toLowerCase();
+            const piso = String(u.piso || '').toLowerCase();
+            const pisoLabel = `p${piso}`; // Para que coincida con "P12", "P3", etc.
+            const ubic = `${oficina} ${pisoLabel}`.toLowerCase();
+
+            return name.includes(term) ||
+                ci.includes(term) ||
+                cargo.includes(term) ||
+                unidad.includes(term) ||
+                inst.includes(term) ||
+                oficina.includes(term) ||
+                piso.includes(term) ||
+                pisoLabel.includes(term) ||
+                ubic.includes(term);
+        });
+    }, [usuarios, filter]);
 
     if (loading) return (
         <div className="flex items-center justify-center py-20">
@@ -97,7 +142,9 @@ const UsuariosView = ({ authFetch = fetch }) => {
                         </div>
                         <div>
                             <h2 className="text-base font-black text-slate-900 leading-tight">Gestión de Usuarios</h2>
-                            <p className="text-slate-400 text-xs font-medium">{usuarios.length} personas registradas</p>
+                            <p className="text-slate-400 text-xs font-medium">
+                                {filter ? `${filtered.length} de ${usuarios.length}` : `${usuarios.length}`} personas registradas
+                            </p>
                         </div>
                     </div>
                     <div className="flex gap-2">
@@ -136,13 +183,22 @@ const UsuariosView = ({ authFetch = fetch }) => {
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                                 {filtered.map(u => (
-                                    <tr key={u.id} className="hover:bg-slate-50 transition-colors text-sm">
+                                    <tr key={`${u.institucion || 'x'}-${u.id}`} className={`hover:bg-slate-50 transition-colors text-sm ${getRowBorder(u.institucion)}`}>
                                         <td className="px-4 py-2.5">
                                             <div className="flex items-center gap-2">
                                                 <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center text-[10px] font-black text-blue-700 flex-shrink-0">
                                                     {u.nombre_completo?.charAt(0).toUpperCase()}
                                                 </div>
-                                                <span className="font-semibold text-slate-800 leading-tight">{u.nombre_completo}</span>
+                                                <div className="flex flex-col">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-semibold text-slate-800 leading-tight">{u.nombre_completo}</span>
+                                                        {u.institucion && (
+                                                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide ${getInstitutionStyle(u.institucion)}`}>
+                                                                {u.institucion}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
                                         </td>
                                         <td className="px-4 py-2.5">
@@ -175,12 +231,19 @@ const UsuariosView = ({ authFetch = fetch }) => {
                         {filtered.length === 0 ? (
                             <div className="py-12 text-center text-slate-400 text-sm font-medium">Sin resultados</div>
                         ) : filtered.map(u => (
-                            <div key={u.id} className="p-3 flex items-center gap-3">
+                            <div key={`${u.institucion || 'x'}-${u.id}`} className="p-3 flex items-center gap-3">
                                 <div className="w-9 h-9 bg-blue-100 rounded-xl flex items-center justify-center text-sm font-black text-blue-700 flex-shrink-0">
                                     {u.nombre_completo?.charAt(0).toUpperCase()}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="font-bold text-slate-800 text-sm truncate">{u.nombre_completo}</div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="font-bold text-slate-800 text-sm truncate">{u.nombre_completo}</div>
+                                        {u.institucion && (
+                                            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${getInstitutionStyle(u.institucion)}`}>
+                                                {u.institucion}
+                                            </span>
+                                        )}
+                                    </div>
                                     <div className="text-[10px] text-slate-500 font-medium">
                                         CI: {u.ci} {u.cargo && `• ${u.cargo}`}
                                     </div>
