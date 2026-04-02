@@ -12,6 +12,7 @@
     "deploy": "npm run build && wrangler pages deploy ./dist"
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
     "hono": "^4.0.0",
     "jspdf": "^4.2.0",
     "jspdf-autotable": "^5.0.7",

@@ -4,10 +4,9 @@ import { AppDialog, useDialog } from '../components/AppDialog';
 
 const getInstitutionStyle = (inst) => {
     const i = (inst || '').toUpperCase();
-    if (i === 'TIERRAS') return 'bg-emerald-500 text-white shadow-sm shadow-emerald-200';
-    if (i === 'JUSTICIA') return 'bg-blue-600 text-white shadow-sm shadow-blue-200';
-    if (i === 'PRESIDENCIA') return 'bg-slate-800 text-white shadow-sm shadow-slate-200';
-    return 'bg-slate-400 text-white';
+    if (i === 'TIERRAS') return 'bg-emerald-50 text-emerald-600 border-emerald-100';
+    if (i === 'JUSTICIA') return 'bg-amber-50 text-amber-600 border-amber-100';
+    return 'bg-blue-50 text-blue-600 border-blue-100';
 };
 
 const HistorialActasView = ({ authFetch = fetch }) => {
@@ -285,13 +284,14 @@ const HistorialActasView = ({ authFetch = fetch }) => {
         }
     };
 
-    const handlePrintIndividual = async (id) => {
+    const handlePrintIndividual = async (id, inst) => {
         setPrinting(id);
         try {
             const { default: jsPDF } = await import('jspdf');
             const { default: autoTable } = await import('jspdf-autotable');
 
-            const dataRes = await authFetch(`/api/actas/${id}`).then(r => r.json());
+            const headers = inst ? { 'x-target-institution': inst } : {};
+            const dataRes = await authFetch(`/api/actas/${id}`, { headers }).then(r => r.json());
 
             const doc = new jsPDF({ unit: 'mm', format: 'letter', orientation: 'portrait' });
             const PW = 215.9, PH = 279.4;
@@ -478,9 +478,9 @@ const HistorialActasView = ({ authFetch = fetch }) => {
                                             </div>
                                             <div>
                                                 <div className="flex items-center gap-2">
-                                                    <div className="font-black text-slate-800 text-sm sm:text-base">{persona.nombre_completo}</div>
+                                                    <div className="font-black text-slate-800 text-sm sm:text-base uppercase">{persona.nombre_completo}</div>
                                                     {persona.institucion && (
-                                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${getInstitutionStyle(persona.institucion)}`}>
+                                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter ${getInstitutionStyle(persona.institucion)}`}>
                                                             {persona.institucion}
                                                         </span>
                                                     )}
@@ -564,11 +564,11 @@ const HistorialActasView = ({ authFetch = fetch }) => {
                                                     </div>
 
                                                     <div className="space-y-2">
-                                                        {actas.filter(a => a.usuario === persona.nombre_completo || a.usuario_id === persona.id).length === 0 ? (
+                                                        {actas.filter(a => (a.usuario_id === persona.id || a.usuario === persona.nombre_completo) && a.institucion === persona.institucion).length === 0 ? (
                                                             <div className="p-4 text-center text-[10px] text-slate-300 italic">No se encontraron actas registradas</div>
                                                         ) : (
                                                             actas
-                                                                .filter(a => a.usuario === persona.nombre_completo || a.usuario_id === persona.id)
+                                                                .filter(a => (a.usuario_id === persona.id || a.usuario === persona.nombre_completo) && a.institucion === persona.institucion)
                                                                 .sort((a, b) => b.id - a.id)
                                                                 .map(acta => {
                                                                     const fecha = new Date(acta.fecha_emision);
@@ -595,7 +595,7 @@ const HistorialActasView = ({ authFetch = fetch }) => {
                                                                             </div>
 
                                                                             <button
-                                                                                onClick={() => handlePrintIndividual(acta.id)}
+                                                                                onClick={() => handlePrintIndividual(acta.id, acta.institucion)}
                                                                                 disabled={printing === acta.id}
                                                                                 className="p-2 bg-slate-50 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
                                                                                 title="Imprimir Acta Original"
@@ -672,11 +672,11 @@ const HistorialActasView = ({ authFetch = fetch }) => {
                             </div>
 
                             {/* Cuerpo - Tabla de Activos */}
-                            <div className="p-0 sm:p-6 overflow-x-auto">
+                            <div className="p-0 sm:p-6 overflow-x-auto max-h-[500px] overflow-y-auto custom-scrollbar">
                                 <table className="min-w-full divide-y divide-slate-100">
-                                    <thead>
-                                        <tr className="bg-slate-50/50">
-                                            <th className="px-4 py-4 text-left w-10">
+                                    <thead className="sticky top-0 z-20">
+                                        <tr className="bg-slate-50">
+                                            <th className="px-4 py-4 text-left w-10 bg-slate-50">
                                                 <input
                                                     type="checkbox"
                                                     className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
@@ -690,10 +690,10 @@ const HistorialActasView = ({ authFetch = fetch }) => {
                                                     }}
                                                 />
                                             </th>
-                                            <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Código</th>
-                                            <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Descripción</th>
-                                            <th className="px-4 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado Físico</th>
-                                            <th className="px-4 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Acciones</th>
+                                            <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50">Código</th>
+                                            <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50">Descripción</th>
+                                            <th className="px-4 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50">Estado Físico</th>
+                                            <th className="px-4 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50">Acciones</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
@@ -723,11 +723,11 @@ const HistorialActasView = ({ authFetch = fetch }) => {
                                                         </td>
                                                         <td className="px-4 py-4 whitespace-nowrap align-top">
                                                             <div className="flex flex-col gap-1">
-                                                                <span className="font-mono text-[10px] sm:text-xs font-black text-slate-700 bg-slate-100 px-2 py-1 rounded-lg uppercase border border-slate-200">
+                                                                <span className="font-mono text-[10px] sm:text-xs font-black text-slate-700 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 uppercase">
                                                                     {a.codigo_activo}
                                                                 </span>
                                                                 {a.institucion && (
-                                                                    <span className={`text-[7px] font-black px-1 py-0.5 rounded uppercase tracking-tighter w-fit ${getInstitutionStyle(a.institucion)}`}>
+                                                                    <span className={`text-[7px] font-black px-1 py-0.5 rounded border uppercase tracking-tighter w-fit ${getInstitutionStyle(a.institucion)}`}>
                                                                         {a.institucion}
                                                                     </span>
                                                                 )}

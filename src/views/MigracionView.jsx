@@ -398,9 +398,9 @@ const MigracionView = ({ authFetch = fetch }) => {
                         )}
 
                         {/* Tabla editable */}
-                        <div className="overflow-x-auto max-h-[420px] border-b border-slate-100">
+                        <div className="overflow-x-auto max-h-[420px] overflow-y-auto custom-scrollbar border-b border-slate-100">
                             <table className="w-full text-left border-collapse table-auto">
-                                <thead className="sticky top-0 bg-slate-100 z-10">
+                                <thead className="sticky top-0 bg-slate-100 z-20">
                                     <tr>
                                         <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase w-10 text-center border-r border-slate-200">#</th>
                                         {previewHeaders.map(h => {

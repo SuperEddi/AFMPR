@@ -1,25 +1,26 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Search, Plus, Download, Upload, Edit2, X, Archive, UserCheck, Monitor, Laptop, Tablet, Printer, Server, HardDrive, Keyboard, Mouse, Package } from 'lucide-react';
 import { AppDialog, useDialog } from '../components/AppDialog';
+import { exportToExcel } from '../utils/excelExport';
 
 const getStatusStyle = (estado) => ({
     'Disponible': 'bg-emerald-50 text-emerald-700 border-emerald-100',
     'Asignado': 'bg-blue-50 text-blue-700 border-blue-100',
     'Mantenimiento': 'bg-amber-50 text-amber-700 border-amber-100',
+    'Sobrante': 'bg-violet-50 text-violet-700 border-violet-100',
 }[estado] || 'bg-slate-100 text-slate-600 border-slate-200');
 
-const INST_CONFIG = {
-    TIERRAS: { pill: 'bg-emerald-600 text-white', border: 'border-l-4 border-l-emerald-400', rowBg: 'hover:bg-emerald-50/50' },
-    JUSTICIA: { pill: 'bg-blue-600 text-white', border: 'border-l-4 border-l-blue-500', rowBg: 'hover:bg-blue-50/40' },
-    PRESIDENCIA: { pill: 'bg-slate-800 text-white', border: 'border-l-4 border-l-slate-500', rowBg: 'hover:bg-slate-100/60' },
-};
 const getInstitutionStyle = (inst) => {
-    const cfg = INST_CONFIG[(inst || '').toUpperCase()];
-    return cfg ? cfg.pill : 'bg-slate-400 text-white';
+    const i = (inst || '').toUpperCase();
+    if (i === 'TIERRAS') return 'bg-emerald-50 text-emerald-600 border-emerald-100';
+    if (i === 'JUSTICIA') return 'bg-amber-50 text-amber-600 border-amber-100';
+    return 'bg-blue-50 text-blue-600 border-blue-100';
 };
 const getRowStyle = (inst) => {
-    const cfg = INST_CONFIG[(inst || '').toUpperCase()];
-    return cfg ? `${cfg.border} ${cfg.rowBg}` : 'hover:bg-slate-50';
+    const i = (inst || '').toUpperCase();
+    if (i === 'TIERRAS') return 'border-l-4 border-l-emerald-400 hover:bg-emerald-50/50';
+    if (i === 'JUSTICIA') return 'border-l-4 border-l-amber-400 hover:bg-amber-50/40';
+    return 'border-l-4 border-l-blue-400 hover:bg-blue-50/30';
 };
 
 const getIcon = (desc) => {
@@ -35,7 +36,7 @@ const getIcon = (desc) => {
     return <Package size={14} />;
 };
 
-const ActivosView = ({ authFetch = fetch }) => {
+const ActivosView = ({ authFetch = fetch, currentUser }) => {
     const [activos, setActivos] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('');
@@ -85,9 +86,10 @@ const ActivosView = ({ authFetch = fetch }) => {
                 method,
                 headers: {
                     'Content-Type': 'application/json',
-                    'x-admin-password': password
+                    'x-admin-password': password,
+                    'x-target-institution': editingActivo?.institucion
                 },
-                body: JSON.stringify(formData)
+                body: JSON.stringify({ ...formData, registrado_por: editingActivo ? editingActivo.registrado_por : currentUser?.nombre })
             });
             if (res.ok) {
                 setShowModal(false);
@@ -104,16 +106,29 @@ const ActivosView = ({ authFetch = fetch }) => {
         }
     };
 
-    const exportToExcel = () => {
+    const exportToExcelFile = async () => {
         if (!activos.length) return;
-        const headers = ['ID', 'Código', 'Descripción', 'Serie', 'Estado', 'Responsable'];
-        const rows = activos.map(a => [a.id, a.codigo_activo, `"${(a.descripcion || '').replace(/"/g, '""')}"`, a.serie || 'SIN SERIE', a.estado_actual, a.responsable || 'SIN ASIGNAR']);
-        const csv = [headers.join('|'), ...rows.map(r => r.join('|'))].join('\n');
-        const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `Inventario_${new Date().toISOString().split('T')[0]}.csv`;
-        link.click();
+        const fechaHoy = new Date().toLocaleDateString('es-ES');
+        await exportToExcel({
+            filename: `Inventario_Activos_${new Date().toISOString().split('T')[0]}`,
+            sheetName: 'Inventario',
+            title: 'INVENTARIO GENERAL DE ACTIVOS FIJOS — MINISTERIO DE LA PRESIDENCIA',
+            subtitle: `Fecha: ${fechaHoy}  ·  Total: ${activos.length} equipos`,
+            columns: ['N°', 'Código Activo', 'Descripción', 'Serie / Modelo', 'Estado', 'Responsable', 'Oficina', 'Institución', 'Registrado por'],
+            rows: activos.map((a, i) => [
+                i + 1,
+                a.codigo_activo || '',
+                a.descripcion || '',
+                a.serie || 'SIN SERIE',
+                a.estado_actual || '',
+                a.responsable || 'SIN ASIGNAR',
+                a.oficina || '',
+                a.institucion || '',
+                a.registrado_por || '',
+            ]),
+            headerColor: 'FF2D3748',
+            accentColor: 'FFF7FAFC',
+        });
     };
 
     const importFromCSV = (e) => {
@@ -193,9 +208,9 @@ const ActivosView = ({ authFetch = fetch }) => {
                                 onChange={e => setFilter(e.target.value)}
                             />
                         </div>
-                        <button onClick={exportToExcel}
+                        <button onClick={exportToExcelFile}
                             className="p-2 bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 rounded-lg transition-all active:scale-95"
-                            title="Exportar Excel">
+                            title="Exportar Excel (.xlsx)">
                             <Download size={16} />
                         </button>
                         <button onClick={() => fileInputRef.current?.click()}
@@ -218,15 +233,16 @@ const ActivosView = ({ authFetch = fetch }) => {
                     ) : (
                         <>
                             {/* Desktop table */}
-                            <div className="hidden md:block overflow-x-auto">
-                                <table className="w-full text-left border-collapse">
-                                    <thead>
+                            <div className="hidden md:block overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar">
+                                <table className="w-full text-left border-collapse min-w-[800px]">
+                                    <thead className="sticky top-0 z-20">
                                         <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500 font-bold">
-                                            <th className="px-4 py-3">Código / Descripción</th>
-                                            <th className="px-4 py-3">Serie</th>
-                                            <th className="px-4 py-3">Estado</th>
-                                            <th className="px-4 py-3">Responsable</th>
-                                            <th className="px-4 py-3 text-right">–</th>
+                                            <th className="px-4 py-3 bg-slate-50 rounded-tl-xl">Código / Descripción</th>
+                                            <th className="px-4 py-3 bg-slate-50">Serie</th>
+                                            <th className="px-4 py-3 bg-slate-50">Estado</th>
+                                            <th className="px-4 py-3 bg-slate-50">Responsable</th>
+                                            <th className="px-4 py-3 bg-slate-50">Origen</th>
+                                            <th className="px-4 py-3 bg-slate-50 text-right rounded-tr-xl">–</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
@@ -241,12 +257,12 @@ const ActivosView = ({ authFetch = fetch }) => {
                                                             <div className="flex items-center gap-2">
                                                                 <div className="font-bold text-slate-800 text-xs font-mono uppercase tracking-tight">{a.codigo_activo}</div>
                                                                 {a.institucion && (
-                                                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide ${getInstitutionStyle(a.institucion)}`}>
+                                                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-wider ${getInstitutionStyle(a.institucion)}`}>
                                                                         {a.institucion}
                                                                     </span>
                                                                 )}
                                                             </div>
-                                                            <div className="text-[10px] text-slate-400 line-clamp-1 max-w-[280px]">{a.descripcion}</div>
+                                                            <div className="text-[10px] text-slate-400 font-medium leading-relaxed max-w-sm break-words">{a.descripcion}</div>
                                                         </div>
                                                     </div>
                                                 </td>
@@ -264,6 +280,13 @@ const ActivosView = ({ authFetch = fetch }) => {
                                                             <UserCheck size={10} /> {a.responsable}
                                                         </span>
                                                     ) : <span className="text-slate-300 text-xs">—</span>}
+                                                </td>
+                                                <td className="px-4 py-2">
+                                                    {a.registrado_por ? (
+                                                        <span className="text-[9px] font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded border border-violet-100 uppercase">
+                                                            {a.registrado_por}
+                                                        </span>
+                                                    ) : <span className="text-slate-300 text-[10px]">—</span>}
                                                 </td>
                                                 <td className="px-4 py-2 text-right">
                                                     <button onClick={() => openModal(a)} className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
@@ -300,7 +323,7 @@ const ActivosView = ({ authFetch = fetch }) => {
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-black text-slate-900 text-xs font-mono uppercase tracking-tight">{a.codigo_activo}</span>
                                                     {a.institucion && (
-                                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${getInstitutionStyle(a.institucion)}`}>
+                                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-wider ${getInstitutionStyle(a.institucion)}`}>
                                                             {a.institucion}
                                                         </span>
                                                     )}

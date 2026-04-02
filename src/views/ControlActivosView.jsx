@@ -1,8 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, ClipboardCheck, User, Package, CheckCircle, AlertCircle, X, MapPin, ListFilter, AlertTriangle, CheckSquare, Download, FileText, Printer } from 'lucide-react';
 import { AppDialog, useDialog } from '../components/AppDialog';
+import { exportToExcel } from '../utils/excelExport';
 
-const ControlActivosView = ({ authFetch = fetch }) => {
+const getInstitutionStyle = (inst) => {
+    const i = (inst || '').toUpperCase();
+    if (i === 'TIERRAS') return 'bg-emerald-50 text-emerald-600 border-emerald-100';
+    if (i === 'JUSTICIA') return 'bg-amber-50 text-amber-600 border-amber-100';
+    return 'bg-blue-50 text-blue-600 border-blue-100';
+};
+
+const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
     const [usuarios, setUsuarios] = useState([]);
     const [allActivos, setAllActivos] = useState([]);
     const [selectedUser, setSelectedUser] = useState(null);
@@ -15,7 +23,8 @@ const ControlActivosView = ({ authFetch = fetch }) => {
     const [suggestions, setSuggestions] = useState([]);
     const [activeListTab, setActiveListTab] = useState('pending'); // 'pending', 'found', 'surplus'
     const [printing, setPrinting] = useState(false);
-    const { showAlert, dialogProps } = useDialog();
+    const [assetObservations, setAssetObservations] = useState({}); // { activoId: 'obs' }
+    const { showAlert, showConfirm, dialogProps } = useDialog();
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -28,7 +37,7 @@ const ControlActivosView = ({ authFetch = fetch }) => {
             setUsuarios(Array.isArray(uData) ? uData : []);
             setAllActivos(Array.isArray(aData) ? aData : []);
         } catch (err) {
-            console.error(err);
+            // Silently fail to protect technical info
         }
         setLoading(false);
     }, [authFetch]);
@@ -41,30 +50,38 @@ const ControlActivosView = ({ authFetch = fetch }) => {
         setSelectedUser(user);
         setLoading(true);
         try {
-            // 1. Cargar auditorías previas
-            const audRes = await authFetch(`/api/auditorias/usuario/${user.id}`);
+            // 1. Cargar auditorías previas usando la institución del usuario seleccionado
+            const audRes = await authFetch(`/api/auditorias/usuario/${user.id}`, {
+                headers: { 'x-target-institution': user.institucion }
+            });
             const audData = await audRes.json();
 
-            // 2. Filtrar activos del usuario
-            const userAssets = allActivos.filter(a =>
-                a.usuario_actual_id === user.id ||
-                (a.responsable && a.responsable.toLowerCase() === user.nombre_completo.toLowerCase())
-            );
+            // 2. Filtrar activos del usuario (comparar ID e INSTITUCIÓN para evitar colisiones)
+            const userAssets = allActivos.filter(a => {
+                const sameId = a.usuario_actual_id === user.id;
+                const sameInst = (a.institucion || '').toUpperCase() === (user.institucion || '').toUpperCase();
+                const sameName = a.responsable && a.responsable.toLowerCase() === user.nombre_completo.toLowerCase();
+
+                // Si coinciden ID e institución, o el nombre coincide en la misma institución
+                return (sameId && sameInst) || (sameName && sameInst);
+            });
 
             setExpectedActivos(userAssets);
 
             // 3. Mapear hallazgos previos
             const prevFound = [];
             const prevSurplus = [];
+            const prevObs = {};
 
             if (Array.isArray(audData)) {
                 audData.forEach(aud => {
                     const asset = allActivos.find(a => a.id === aud.activo_id);
+                    if (aud.observacion) prevObs[aud.activo_id] = aud.observacion;
+
                     if (asset) {
                         if (aud.hallazgo === 'Correcto') prevFound.push(asset);
-                        else {
+                        else if (aud.hallazgo !== 'Faltante') {
                             // Si es ajeno, necesitamos saber de quién era durante el escaneo
-                            // (En esta versión simplificada usamos los datos actuales del activo)
                             if (aud.hallazgo === 'Ajeno') {
                                 const resp = asset.responsable || 'Otro';
                                 prevSurplus.push({ ...asset, warning: true, otherResp: resp });
@@ -78,9 +95,10 @@ const ControlActivosView = ({ authFetch = fetch }) => {
 
             setControlledActivos(prevFound);
             setSurplusActivos(prevSurplus);
+            setAssetObservations(prevObs);
 
         } catch (err) {
-            console.error(err);
+            // Silently fail to protect technical info
         }
         setLoading(false);
         setUserSearch('');
@@ -121,7 +139,9 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                     body: JSON.stringify({
                         usuario_auditado_id: selectedUser.id,
                         activo_id: inExpected.id,
-                        hallazgo: 'Correcto'
+                        hallazgo: 'Correcto',
+                        realizado_por: currentUser?.nombre,
+                        institucion: selectedUser.institucion
                     })
                 });
                 setControlledActivos(prev => [inExpected, ...prev]);
@@ -160,7 +180,9 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                     body: JSON.stringify({
                         usuario_auditado_id: selectedUser.id,
                         activo_id: foundElsewhere.id,
-                        hallazgo: hallazgo
+                        hallazgo: hallazgo,
+                        realizado_por: currentUser?.nombre,
+                        institucion: selectedUser.institucion
                     })
                 });
 
@@ -173,7 +195,48 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                 await showAlert('Error al guardar la validación.', { title: 'Error de Persistencia', type: 'error' });
             }
         } else {
-            await showAlert(`El código "${code}" no existe en el inventario global.`, { title: 'Código no encontrado', type: 'error' });
+            // 4. No existe. ¿Registrar como sobrante?
+            const confirmRegister = await showConfirm(`El código "${code}" no existe en el inventario global. ¿Deseas registrarlo como un NUEVO ACTIVO SOBRANTE hallado en esta ubicación?`, {
+                title: 'Código no encontrado',
+                type: 'warning',
+                confirmText: 'Registrar como Sobrante'
+            });
+
+            if (confirmRegister) {
+                try {
+                    setLoading(true);
+                    const res = await authFetch('/api/activos', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            codigo_activo: code,
+                            descripcion: 'ACTIVO SOBRANTE - HALLADO EN AUDITORÍA',
+                            estado_actual: 'Sobrante',
+                            registrado_por: currentUser?.nombre
+                        })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error);
+
+                    // Vincular a la auditoría del usuario
+                    await authFetch('/api/auditorias', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            usuario_auditado_id: selectedUser.id,
+                            activo_id: data.id,
+                            hallazgo: 'Sobrante',
+                            realizado_por: currentUser?.nombre,
+                            institucion: selectedUser.institucion
+                        })
+                    });
+
+                    setSurplusActivos(prev => [data.activo, ...prev]);
+                    await showAlert(`Activo ${code} registrado exitosamente como sobrante.`, { title: 'Registrado', type: 'success' });
+                } catch (err) {
+                    await showAlert('Error al registrar el activo sobrante.', { title: 'Error', type: 'error' });
+                } finally {
+                    setLoading(false);
+                }
+            }
         }
     };
 
@@ -183,7 +246,10 @@ const ControlActivosView = ({ authFetch = fetch }) => {
         if (!confirm) return;
 
         try {
-            await authFetch(`/api/auditorias/usuario/${selectedUser.id}`, { method: 'DELETE' });
+            await authFetch(`/api/auditorias/usuario/${selectedUser.id}`, {
+                method: 'DELETE',
+                headers: { 'x-target-institution': selectedUser.institucion }
+            });
             setControlledActivos([]);
             setSurplusActivos([]);
             await showAlert('La auditoría ha sido reiniciada.', { title: 'Reinicio Completo', type: 'info' });
@@ -195,7 +261,10 @@ const ControlActivosView = ({ authFetch = fetch }) => {
     const handleDeleteAuditItem = async (activoId, from) => {
         if (!selectedUser) return;
         try {
-            await authFetch(`/api/auditorias/usuario/${selectedUser.id}/activo/${activoId}`, { method: 'DELETE' });
+            await authFetch(`/api/auditorias/usuario/${selectedUser.id}/activo/${activoId}`, {
+                method: 'DELETE',
+                headers: { 'x-target-institution': selectedUser.institucion }
+            });
             if (from === 'found') {
                 setControlledActivos(prev => prev.filter(a => a.id !== activoId));
             } else {
@@ -206,34 +275,62 @@ const ControlActivosView = ({ authFetch = fetch }) => {
         }
     };
 
-    const exportToExcel = () => {
+    const handleSaveObservation = async (activo, currentObs) => {
+        const newObs = prompt(`Observación para ${activo.codigo_activo}:`, currentObs || '');
+        if (newObs === null) return;
+
+        try {
+            setLoading(true);
+            await authFetch('/api/auditorias', {
+                method: 'POST',
+                body: JSON.stringify({
+                    usuario_auditado_id: selectedUser.id,
+                    activo_id: activo.id,
+                    hallazgo: controlledActivos.find(c => c.id === activo.id) ? 'Correcto' : 'Faltante',
+                    realizado_por: currentUser?.nombre,
+                    institucion: selectedUser.institucion,
+                    observacion: newObs
+                })
+            });
+            setAssetObservations(prev => ({ ...prev, [activo.id]: newObs }));
+            await showAlert('Observación guardada.', { title: 'Éxito', type: 'success' });
+        } catch (err) {
+            await showAlert('Error al guardar la observación.', { title: 'Error', type: 'error' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleExportExcel = async () => {
         if (!selectedUser) return;
 
-        const headers = ['ESTADO AUDITORIA', 'CODIGO ACTIVO', 'DESCRIPCION', 'SERIE', 'ESTADO SISTEMA', 'RESPONSABLE ACTUAL SI ES AJENO'];
-        const rows = [];
+        const fechaHoy = new Date().toLocaleDateString('es-ES');
+        const pending = expectedActivos.filter(a => !controlledActivos.some(c => c.id === a.id));
 
+        const rows = [];
         // Encontrados
         controlledActivos.forEach(a => {
-            rows.push(['ENCONTRADO (OK)', a.codigo_activo, a.descripcion, a.serie || '', a.estado_actual, '']);
+            rows.push(['✓ ENCONTRADO', a.codigo_activo, a.descripcion || '', a.serie || '', a.estado_actual || '', '', assetObservations[a.id] || '']);
         });
-
         // Faltantes
-        const pending = expectedActivos.filter(a => !controlledActivos.some(c => c.id === a.id));
         pending.forEach(a => {
-            rows.push(['FALTANTE', a.codigo_activo, a.descripcion, a.serie || '', a.estado_actual, '']);
+            rows.push(['✗ FALTANTE', a.codigo_activo, a.descripcion || '', a.serie || '', a.estado_actual || '', '', assetObservations[a.id] || '']);
         });
-
-        // Sobrantes
+        // Sobrantes / Ajenos
         surplusActivos.forEach(a => {
-            rows.push([a.warning ? 'SOBRANTE (AJENO)' : 'SOBRANTE', a.codigo_activo, a.descripcion, a.serie || '', a.estado_actual, a.otherResp || '']);
+            rows.push([a.warning ? '⚠ AJENO' : '⬡ SOBRANTE', a.codigo_activo, a.descripcion || '', a.serie || '', a.estado_actual || '', a.otherResp || '', assetObservations[a.id] || '']);
         });
 
-        const csvContent = [headers.join('|'), ...rows.map(r => r.join('|'))].join('\n');
-        const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `Auditoria_${selectedUser.nombre_completo.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
-        link.click();
+        await exportToExcel({
+            filename: `Auditoria_${selectedUser.nombre_completo.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}`,
+            sheetName: 'Auditoría',
+            title: `INFORME DE AUDITORÍA — ${selectedUser.nombre_completo.toUpperCase()}`,
+            subtitle: `CI: ${selectedUser.ci}  ·  Cargo: ${selectedUser.cargo || 'N/A'}  ·  Fecha: ${fechaHoy}  ·  Correctos: ${controlledActivos.length}  Faltantes: ${pending.length}  Sobrantes: ${surplusActivos.length}`,
+            columns: ['Estado Auditoría', 'Código Activo', 'Descripción', 'Serie', 'Estado Sistema', 'Responsable Actual (si ajeno)', 'Observación'],
+            rows,
+            headerColor: 'FF1A237E',
+            accentColor: 'FFE8EAF6',
+        });
     };
 
     const handlePrintPDF = async () => {
@@ -270,10 +367,14 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                 const targetH = (img.height * targetW) / img.width;
                 canvas.width = targetW;
                 canvas.height = targetH;
+
+                // Fondo blanco para evitar transparencia negra en JPEG
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, targetW, targetH);
                 ctx.drawImage(img, 0, 0, targetW, targetH);
 
-                const logoDataUrl = canvas.toDataURL('image/jpeg', 0.8); // JPEG con compresión 0.8
-                doc.addImage(logoDataUrl, 'JPEG', ML, 8, 45, (45 * targetH) / targetW);
+                const logoDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                doc.addImage(logoDataUrl, 'JPEG', ML, 8, 48, (48 * targetH) / targetW);
             } catch { /* sin logo */ }
 
             doc.setDrawColor(197, 160, 89); doc.setLineWidth(0.6);
@@ -290,6 +391,9 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                     d.setFillColor(0, 122, 51); d.rect(ML + 50, PH - 18, 25, 1.5, 'F');
                     d.setFontSize(8); d.setFont('helvetica', 'bold'); d.setTextColor(0, 0, 0);
                     d.text('MINISTERIO DE LA PRESIDENCIA', PW - MR, PH - 20, { align: 'right' });
+                    d.setFont('helvetica', 'normal'); d.setFontSize(7); d.setTextColor(60, 60, 60);
+                    d.text('Zona Central - Calle Ayacucho Esq. Potosí', PW - MR, PH - 16, { align: 'right' });
+                    d.text('Teléfonos: +591 (2) 2184178', PW - MR, PH - 12, { align: 'right' });
                     d.text(`Pág. ${i} / ${total}`, PW / 2, PH - 8, { align: 'center' });
                 }
             };
@@ -331,9 +435,9 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                 doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0, 100, 0);
                 doc.text('ACTIVOS ENCONTRADOS (CORRECTOS):', ML, y);
                 autoTable(doc, {
-                    startY: y + 2, margin: { left: ML, right: MR }, tableWidth: contentW,
-                    head: [['CÓDIGO', 'DESCRIPCIÓN', 'ESTADO SISTEMA']],
-                    body: controlledActivos.map(a => [a.codigo_activo, a.descripcion, a.estado_actual]),
+                    startY: y + 2, margin: { left: ML, right: MR, bottom: MB + 10 }, tableWidth: contentW,
+                    head: [['CÓDIGO', 'DESCRIPCIÓN', 'ESTADO SISTEMA', 'OBSERVACIÓN']],
+                    body: controlledActivos.map(a => [a.codigo_activo, a.descripcion, a.estado_actual, assetObservations[a.id] || '']),
                     theme: 'grid',
                     headStyles: { fillColor: [240, 250, 240], textColor: [0, 80, 0], fontSize: 8 },
                     bodyStyles: { fontSize: 7, textColor: [0, 0, 0] },
@@ -347,9 +451,9 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                 doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(180, 0, 0);
                 doc.text('ACTIVOS FALTANTES (NO DETECTADOS):', ML, y);
                 autoTable(doc, {
-                    startY: y + 2, margin: { left: ML, right: MR }, tableWidth: contentW,
+                    startY: y + 2, margin: { left: ML, right: MR, bottom: MB + 10 }, tableWidth: contentW,
                     head: [['CÓDIGO', 'DESCRIPCIÓN', 'OBSERVACIÓN']],
-                    body: pending.map(a => [a.codigo_activo, a.descripcion, 'NO LOCALIZADO']),
+                    body: pending.map(a => [a.codigo_activo, a.descripcion, assetObservations[a.id] || 'NO LOCALIZADO']),
                     theme: 'grid',
                     headStyles: { fillColor: [255, 240, 240], textColor: [150, 0, 0], fontSize: 8 },
                     bodyStyles: { fontSize: 7, textColor: [0, 0, 0] },
@@ -363,12 +467,13 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                 doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0, 0, 150);
                 doc.text('ACTIVOS SOBRANTES O AJENOS DETECTADOS:', ML, y);
                 autoTable(doc, {
-                    startY: y + 2, margin: { left: ML, right: MR }, tableWidth: contentW,
-                    head: [['CÓDIGO', 'DESCRIPCIÓN', 'RESPONSABLE ACTUAL / ESTADO']],
+                    startY: y + 2, margin: { left: ML, right: MR, bottom: MB + 10 }, tableWidth: contentW,
+                    head: [['CÓDIGO', 'DESCRIPCIÓN', 'RESPONSABLE ACTUAL / ESTADO', 'OBSERVACIÓN']],
                     body: surplusActivos.map(a => [
                         a.codigo_activo,
                         a.descripcion,
-                        a.warning ? `AJENO: ${a.otherResp || 'Otro'}` : (a.estado_actual || 'Disponible')
+                        a.warning ? `AJENO: ${a.otherResp || 'Otro'}` : (a.estado_actual || 'Disponible'),
+                        assetObservations[a.id] || ''
                     ]),
                     theme: 'grid',
                     headStyles: { fillColor: [240, 240, 255], textColor: [0, 0, 120], fontSize: 8 },
@@ -392,17 +497,30 @@ const ControlActivosView = ({ authFetch = fetch }) => {
             doc.save(`Auditoria_${selectedUser.nombre_completo.trim().replace(/\s+/g, '_')}_${new Date().getTime()}.pdf`);
 
         } catch (e) {
-            console.error(e);
+            // Silently fail to protect technical info
             await showAlert('Error al generar el PDF del reporte.', { title: 'Error', type: 'error' });
         } finally {
             setPrinting(false);
         }
     };
 
-    const filteredUsers = usuarios.filter(u =>
-        u.nombre_completo.toLowerCase().includes(userSearch.toLowerCase()) ||
-        String(u.ci).includes(userSearch)
-    );
+    const filteredUsers = React.useMemo(() => {
+        const t = (userSearch || '').toLowerCase().trim();
+        if (!t) return [];
+
+        // Filtrar y dedubicar por nombre + CI
+        const seen = new Set();
+        return usuarios.filter(u => {
+            const match = (u.nombre_completo || '').toLowerCase().includes(t) ||
+                String(u.ci || '').includes(t);
+            if (!match) return false;
+
+            const key = `${u.nombre_completo}-${u.ci}-${u.institucion}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    }, [usuarios, userSearch]);
 
     const pendingActivos = expectedActivos
         .filter(a => !controlledActivos.some(c => c.id === a.id))
@@ -432,7 +550,7 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                 <div className="flex items-center gap-2">
                     {selectedUser && (
                         <>
-                            <button onClick={exportToExcel} className="p-2.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl hover:bg-emerald-100 transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-tight">
+                            <button onClick={handleExportExcel} className="p-2.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl hover:bg-emerald-100 transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-tight">
                                 <Download size={16} /> Excel
                             </button>
                             <button disabled={printing} onClick={handlePrintPDF} className="p-2.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl hover:bg-rose-100 transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-tight disabled:opacity-50">
@@ -460,22 +578,25 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                             <User size={32} />
                         </div>
                         <h3 className="text-lg font-black text-slate-800">Seleccionar Funcionario</h3>
-                        <p className="text-slate-500 text-sm">Busca al responsable que deseas auditar</p>
+                        <p className="text-slate-500 text-sm">Busca por nombre o CI para iniciar</p>
                     </div>
 
                     <div className="relative mb-4">
                         <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
                             type="text"
-                            placeholder="Buscar por nombre o CI..."
-                            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all text-sm"
+                            placeholder="Ej. Juan Pérez o 1234567..."
+                            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all text-sm font-medium"
                             value={userSearch}
                             onChange={e => setUserSearch(e.target.value)}
                         />
                     </div>
 
                     <div className="space-y-1 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
-                        {loading && <div className="py-10 text-center text-slate-400 animate-pulse">Cargando base de datos...</div>}
+                        {loading && <div className="py-10 text-center text-slate-400 animate-pulse flex flex-col items-center gap-2">
+                            <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                            Buscando funcionarios...
+                        </div>}
                         {userSearch.length > 0 && filteredUsers.map(u => (
                             <button
                                 key={u.id}
@@ -486,7 +607,14 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                                     {u.nombre_completo.charAt(0)}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="font-bold text-slate-800 text-sm truncate uppercase tracking-tight">{u.nombre_completo}</div>
+                                    <div className="flex items-center gap-2 mb-0.5">
+                                        <div className="font-bold text-slate-800 text-sm truncate uppercase tracking-tight">{u.nombre_completo}</div>
+                                        {u.institucion && (
+                                            <span className={`text-[7px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(u.institucion)}`}>
+                                                {u.institucion}
+                                            </span>
+                                        )}
+                                    </div>
                                     <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{u.cargo} · CI: {u.ci}</div>
                                 </div>
                                 <div className="p-2 bg-slate-50 rounded-lg text-slate-300 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-all shadow-sm">
@@ -494,11 +622,11 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                                 </div>
                             </button>
                         ))}
-                        {userSearch.length > 0 && filteredUsers.length === 0 && (
-                            <div className="py-8 text-center text-slate-400 text-sm font-medium italic">No se encontraron resultados</div>
+                        {userSearch.length > 0 && filteredUsers.length === 0 && !loading && (
+                            <div className="py-8 text-center text-slate-400 text-sm font-medium italic">No se encontraron coincidencias para "{userSearch}"</div>
                         )}
                         {!loading && userSearch.length === 0 && (
-                            <div className="py-8 text-center text-slate-300 text-[10px] font-black uppercase tracking-[0.2em]">Escribe para buscar funcionarios</div>
+                            <div className="py-8 text-center text-slate-300 text-[10px] font-black uppercase tracking-[0.2em]">Escribe nombre o CI para filtrar</div>
                         )}
                     </div>
                 </div>
@@ -511,8 +639,15 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                                 <div className="w-12 h-12 bg-indigo-600 text-white rounded-xl flex items-center justify-center font-black text-lg shadow-lg shadow-indigo-500/20">
                                     {selectedUser.nombre_completo.charAt(0)}
                                 </div>
-                                <div className="min-w-0">
-                                    <h3 className="font-black text-slate-900 text-xs leading-tight truncate uppercase tracking-tight">{selectedUser.nombre_completo}</h3>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <h3 className="font-black text-slate-900 text-xs leading-tight truncate uppercase tracking-tight">{selectedUser.nombre_completo}</h3>
+                                        {selectedUser.institucion && (
+                                            <span className={`text-[7px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(selectedUser.institucion)}`}>
+                                                {selectedUser.institucion}
+                                            </span>
+                                        )}
+                                    </div>
                                     <p className="text-[10px] text-slate-400 font-black uppercase tracking-tighter">CI: {selectedUser.ci} · {selectedUser.cargo}</p>
                                 </div>
                             </div>
@@ -568,8 +703,15 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                                                             <Search size={14} />
                                                         </div>
                                                         <div className="flex-1 min-w-0">
-                                                            <div className="text-xs font-bold text-slate-200 group-hover:text-blue-300 transition-colors uppercase">{s.codigo_activo}</div>
-                                                            <div className="text-[10px] text-slate-500 truncate lowercase">{s.descripcion}</div>
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="text-xs font-bold text-slate-200 group-hover:text-blue-300 transition-colors uppercase">{s.codigo_activo}</div>
+                                                                {s.institucion && (
+                                                                    <span className={`text-[7px] font-black px-1 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(s.institucion)}`}>
+                                                                        {s.institucion}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-500 leading-relaxed font-medium lowercase">{s.descripcion}</div>
                                                             <div className="text-[9px] text-slate-600 italic">Resp: {s.responsable || 'Sin asignar'}</div>
                                                         </div>
                                                     </button>
@@ -611,7 +753,7 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                     <div className="lg:col-span-8 flex flex-col h-[calc(100vh-14rem)] bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
 
                         {/* Tabs Navegación */}
-                        <div className="flex border-b border-slate-100 bg-slate-50/50 p-2 gap-1 overflow-x-auto no-scrollbar">
+                        <div className="sticky top-0 z-10 flex border-b border-slate-100 bg-slate-50 p-2 gap-1 overflow-x-auto no-scrollbar">
                             <button
                                 onClick={() => setActiveListTab('pending')}
                                 className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all ${activeListTab === 'pending' ? 'bg-white shadow text-rose-600 border border-rose-100' : 'text-slate-400 hover:bg-white hover:text-slate-600'}`}
@@ -650,11 +792,24 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                                                 <Package size={18} />
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="font-mono font-black text-xs text-rose-600 uppercase">{a.codigo_activo}</div>
-                                                <div className="text-[10px] text-slate-500 font-medium truncate max-w-lg">{a.descripcion}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="font-mono font-black text-xs text-rose-600 uppercase leading-none">{a.codigo_activo}</div>
+                                                    {a.institucion && (
+                                                        <span className={`text-[7px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(a.institucion)}`}>
+                                                            {a.institucion}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-[10px] text-slate-500 font-medium leading-relaxed max-w-sm break-words">{a.descripcion}</div>
+                                                {assetObservations[a.id] && <div className="text-[9px] text-rose-500 font-bold bg-rose-50/50 px-1.5 py-0.5 rounded border border-rose-100/50 mt-1 flex items-center gap-1.5 w-fit"> <AlertCircle size={10} /> {assetObservations[a.id]}</div>}
                                                 {a.oficina && <div className="text-[9px] text-slate-400 font-bold mt-0.5">📍 {a.oficina}</div>}
                                             </div>
-                                            <div className="px-2 py-1 bg-rose-50 border border-rose-100 rounded text-[9px] font-black text-rose-500 uppercase tracking-tighter">Faltante</div>
+                                            <div className="flex flex-col gap-1 items-end">
+                                                <div className="px-2 py-1 bg-rose-50 border border-rose-100 rounded text-[9px] font-black text-rose-500 uppercase tracking-tighter">Faltante</div>
+                                                <button onClick={() => handleSaveObservation(a, assetObservations[a.id])} className="text-[8px] font-black text-slate-400 hover:text-indigo-600 uppercase flex items-center gap-1 transition-colors">
+                                                    <Printer size={10} /> {assetObservations[a.id] ? 'Editar Obs' : 'Añadir Obs'}
+                                                </button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -670,10 +825,21 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                                                 <CheckSquare size={18} />
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="font-mono font-black text-xs text-emerald-700 uppercase">{a.codigo_activo}</div>
-                                                <div className="text-[10px] text-emerald-600/70 font-medium truncate max-w-lg">{a.descripcion}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="font-mono font-black text-xs text-emerald-700 uppercase leading-none">{a.codigo_activo}</div>
+                                                    {a.institucion && (
+                                                        <span className={`text-[7px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(a.institucion)}`}>
+                                                            {a.institucion}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-[10px] text-emerald-600/70 font-medium leading-relaxed max-w-sm break-words">{a.descripcion}</div>
+                                                {assetObservations[a.id] && <div className="text-[9px] text-emerald-600 font-bold bg-emerald-50/50 px-1.5 py-0.5 rounded border border-emerald-100/50 mt-1 flex items-center gap-1.5 w-fit"> <CheckCircle size={10} /> {assetObservations[a.id]}</div>}
                                             </div>
                                             <div className="flex items-center gap-2">
+                                                <button onClick={() => handleSaveObservation(a, assetObservations[a.id])} className="p-1.5 text-slate-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-all" title="Añadir Observación">
+                                                    <Printer size={14} />
+                                                </button>
                                                 <div className="px-2 py-1 bg-emerald-100 border border-emerald-200 rounded text-[9px] font-black text-emerald-600 uppercase tracking-tighter">Correcto</div>
                                                 <button onClick={() => handleDeleteAuditItem(a.id, 'found')} className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all">
                                                     <X size={14} />
@@ -694,8 +860,15 @@ const ControlActivosView = ({ authFetch = fetch }) => {
                                                 {a.warning ? <AlertTriangle size={18} /> : <Package size={18} />}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className={`font-mono font-black text-xs uppercase ${a.warning ? 'text-amber-700' : 'text-blue-700'}`}>{a.codigo_activo}</div>
-                                                <div className={`text-[10px] font-medium truncate max-w-lg ${a.warning ? 'text-amber-600' : 'text-blue-600'}`}>{a.descripcion}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`font-mono font-black text-xs uppercase leading-none ${a.warning ? 'text-amber-700' : 'text-blue-700'}`}>{a.codigo_activo}</div>
+                                                    {a.institucion && (
+                                                        <span className={`text-[7px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(a.institucion)}`}>
+                                                            {a.institucion}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className={`text-[10px] font-medium leading-relaxed max-w-sm break-words ${a.warning ? 'text-amber-600' : 'text-blue-600'}`}>{a.descripcion}</div>
                                                 {a.warning && (
                                                     <div className="text-[9px] font-black text-rose-500 mt-1 uppercase flex items-center gap-1">
                                                         <AlertCircle size={10} /> Asignado a: {a.otherResp}

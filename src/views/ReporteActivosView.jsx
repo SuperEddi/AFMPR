@@ -1,14 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import {
     ArrowLeft, FileSpreadsheet, RefreshCw, BoxSelect,
-    Search, ClipboardCheck, Clock, Wrench, LayoutDashboard
+    Search, ClipboardCheck, Clock, Wrench, LayoutDashboard, AlertTriangle, Package
 } from 'lucide-react';
+import { exportToExcel } from '../utils/excelExport';
 
 const TIPOS = {
     total: { label: 'Total de Activos', icon: LayoutDashboard, color: 'blue', endpoint: '/api/activos', estado: null },
     asignados: { label: 'Activos Asignados', icon: ClipboardCheck, color: 'green', endpoint: '/api/activos?estado=Asignado', estado: 'Asignado' },
     disponibles: { label: 'Activos Disponibles', icon: BoxSelect, color: 'orange', endpoint: '/api/activos?estado=Disponible', estado: 'Disponible' },
     mantenimiento: { label: 'En Mantenimiento', icon: Wrench, color: 'red', endpoint: '/api/activos?estado=Mantenimiento', estado: 'Mantenimiento' },
+    sobrantes: { label: 'Activos Sobrantes / Ajenos', icon: AlertTriangle, color: 'red', endpoint: '/api/activos?estado=Sobrante', estado: 'Sobrante' },
+};
+
+const getInstitutionStyle = (inst) => {
+    const i = (inst || '').toUpperCase();
+    if (i === 'TIERRAS') return 'bg-emerald-50 text-emerald-600 border-emerald-100';
+    if (i === 'JUSTICIA') return 'bg-amber-50 text-amber-600 border-amber-100';
+    return 'bg-blue-50 text-blue-600 border-blue-100';
 };
 
 const COLOR_MAP = {
@@ -58,41 +67,39 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
         (a.responsable || '').toLowerCase().includes(filter.toLowerCase())
     );
 
-    /* ── Exportar a Excel (.csv con separador | legible en Excel) ── */
-    const exportExcel = () => {
+    /* ── Exportar a Excel (.xlsx formateado) ── */
+    const exportExcel = async () => {
         const fechaHoy = new Date().toLocaleDateString('es-ES');
-        const headers = ['N°', 'Código Activo', 'Descripción', 'Serie / Modelo', 'Estado', 'Responsable / Custodio', 'Categoría'];
-        const rows = filtered.map((a, i) => [
-            i + 1,
-            a.codigo_activo || '',
-            `"${(a.descripcion || '').replace(/"/g, '""')}"`,
-            a.serie || 'SIN SERIE',
-            a.estado_actual || '',
-            a.responsable || 'SIN ASIGNAR',
-            a.categoria || ''
-        ]);
-
-        // Encabezado del reporte
-        const header = [
-            `"REPORTE DE ${cfg.label.toUpperCase()}"`,
-            `"Fecha de generación: ${fechaHoy}"`,
-            `"Total registros: ${filtered.length}"`,
-            '',
-        ];
-
-        const csv = [
-            ...header,
-            headers.join('|'),
-            ...rows.map(r => r.join('|'))
-        ].join('\n');
-
-        const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `reporte_${tipo}_activos_${fechaHoy.replace(/\//g, '-')}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
+        const COLOR_HEADER = {
+            blue: 'FF1E3A5F',
+            green: 'FF1A5C3A',
+            orange: 'FF7C3B00',
+            red: 'FF7C1C1C',
+        };
+        const COLOR_ACCENT = {
+            blue: 'FFE8F0FE',
+            green: 'FFE8F5EE',
+            orange: 'FFFFF3E5',
+            red: 'FFFEF2F2',
+        };
+        await exportToExcel({
+            filename: `Reporte_${tipo}_${fechaHoy.replace(/\//g, '-')}`,
+            sheetName: cfg.label,
+            title: `REPORTE DE ${cfg.label.toUpperCase()} — MINISTERIO DE LA PRESIDENCIA`,
+            subtitle: `Fecha: ${fechaHoy}  ·  Total registros: ${filtered.length}`,
+            columns: ['N°', 'Código Activo', 'Descripción', 'Serie / Modelo', 'Estado', 'Responsable / Custodio', 'Institución'],
+            rows: filtered.map((a, i) => [
+                i + 1,
+                a.codigo_activo || '',
+                a.descripcion || '',
+                a.serie || 'SIN SERIE',
+                a.estado_actual || '',
+                a.responsable || 'SIN ASIGNAR',
+                a.institucion || '',
+            ]),
+            headerColor: COLOR_HEADER[cfg.color] || COLOR_HEADER.blue,
+            accentColor: COLOR_ACCENT[cfg.color] || COLOR_ACCENT.blue,
+        });
     };
 
     return (
@@ -154,16 +161,16 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
             ) : (
                 <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                     {/* Desktop */}
-                    <div className="hidden sm:block overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
+                    <div className="hidden sm:block overflow-x-auto max-h-[calc(100vh-320px)] overflow-y-auto custom-scrollbar">
+                        <table className="w-full text-left border-collapse min-w-[800px]">
+                            <thead className="sticky top-0 z-20">
                                 <tr className={`text-[10px] uppercase tracking-wider font-bold border-b ${colors.light} ${colors.border}`}>
-                                    <th className={`px-3 py-2.5 ${colors.text}`}>#</th>
-                                    <th className={`px-3 py-2.5 ${colors.text}`}>Código</th>
-                                    <th className={`px-3 py-2.5 ${colors.text}`}>Descripción</th>
-                                    <th className={`px-3 py-2.5 ${colors.text}`}>Serie / Modelo</th>
-                                    <th className={`px-3 py-2.5 ${colors.text}`}>Estado</th>
-                                    <th className={`px-3 py-2.5 ${colors.text}`}>Responsable</th>
+                                    <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>#</th>
+                                    <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>Código</th>
+                                    <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>Descripción</th>
+                                    <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>Serie / Modelo</th>
+                                    <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>Estado</th>
+                                    <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>Responsable</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
@@ -171,10 +178,17 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
                                     <tr key={a.id} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-3 py-2 text-[10px] text-slate-400 font-mono">{i + 1}</td>
                                         <td className="px-3 py-2">
-                                            <span className="font-mono font-black text-xs text-slate-800">{a.codigo_activo}</span>
+                                            <div className="flex flex-col gap-1">
+                                                <span className="font-mono font-black text-xs text-slate-800 uppercase leading-none">{a.codigo_activo}</span>
+                                                {a.institucion && (
+                                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter w-fit ${getInstitutionStyle(a.institucion)}`}>
+                                                        {a.institucion}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
-                                        <td className="px-3 py-2 text-xs text-slate-700 max-w-[240px]">
-                                            <div className="truncate" title={a.descripcion}>{a.descripcion}</div>
+                                        <td className="px-3 py-2 text-xs text-slate-700 max-w-sm">
+                                            <div className="leading-relaxed break-words" title={a.descripcion}>{a.descripcion}</div>
                                         </td>
                                         <td className="px-3 py-2 text-xs text-slate-500 font-mono">
                                             {a.serie || <span className="text-slate-300">—</span>}
@@ -215,7 +229,14 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
                         {filtered.map((a, i) => (
                             <div key={a.id} className="p-3 space-y-1.5">
                                 <div className="flex items-center justify-between gap-2">
-                                    <span className="font-mono font-black text-xs text-slate-800">{a.codigo_activo}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-mono font-black text-xs text-slate-800 uppercase leading-none">{a.codigo_activo}</span>
+                                        {a.institucion && (
+                                            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter ${getInstitutionStyle(a.institucion)}`}>
+                                                {a.institucion}
+                                            </span>
+                                        )}
+                                    </div>
                                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${a.estado_actual === 'Asignado' ? 'bg-blue-50 text-blue-700 border-blue-100' :
                                         a.estado_actual === 'Disponible' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
                                             a.estado_actual === 'Mantenimiento' ? 'bg-amber-50 text-amber-700 border-amber-100' :

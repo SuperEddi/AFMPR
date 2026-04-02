@@ -12,13 +12,14 @@ import GestionAccesosView from './views/GestionAccesosView';
 import BitacoraView from './views/BitacoraView';
 import {
     Bell, Menu, Archive,
-    LayoutDashboard, ClipboardCheck, BoxSelect, Wrench, FilePlus2, ExternalLink
+    LayoutDashboard, ClipboardCheck, BoxSelect, AlertTriangle, FilePlus2, ExternalLink,
+    ShieldCheck, ShieldAlert, Lock
 } from 'lucide-react';
 
 function App() {
     const [activeTab, setActiveTab] = useState('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    const [stats, setStats] = useState({ total: 0, asignados: 0, disponibles: 0, mantenimiento: 0 });
+    const [stats, setStats] = useState({ total: 0, asignados: 0, disponibles: 0, sobrantes: 0 });
     const [reporteTipo, setReporteTipo] = useState(null);
     const [institution, setInstitution] = useState(localStorage.getItem('selectedInstitution') || 'tierras');
     const [adminPassword, setAdminPassword] = useState(localStorage.getItem('adminPassword') || '');
@@ -26,17 +27,72 @@ function App() {
         try { return JSON.parse(localStorage.getItem('currentUser') || 'null'); } catch { return null; }
     });
 
+    // --- CONTROL DE ACCESO A BASES DE DATOS ---
+    const allowedInstitutions = React.useMemo(() => {
+        if (!currentUser) return [];
+        // Admin tiene acceso total
+        if (currentUser.rol === 'admin') return ['consolidado', 'tierras', 'justicia', 'presidencia'];
+
+        // Técnicos solo ven lo que tienen asignado
+        const insts = (currentUser.instituciones || []).map(i => i.toLowerCase());
+
+        // El modo CONSOLIDADO solo está disponible si tiene las 3 bases
+        if (insts.length === 3) return ['consolidado', ...insts];
+        return insts;
+    }, [currentUser]);
+
+    // Asegurar que la institución seleccionada sea una permitida
+    useEffect(() => {
+        if (currentUser && allowedInstitutions.length > 0) {
+            if (!allowedInstitutions.includes(institution)) {
+                const firstAllowed = allowedInstitutions[0];
+                setInstitution(firstAllowed);
+                localStorage.setItem('selectedInstitution', firstAllowed);
+            }
+        }
+    }, [currentUser, allowedInstitutions, institution]);
+
     // --- AUTH ---
-    const handleLogin = (user) => {
-        setCurrentUser(user);
+    const handleLogin = (data) => {
+        const { user, admin_password } = data;
         localStorage.setItem('currentUser', JSON.stringify(user));
+        if (admin_password) {
+            localStorage.setItem('adminPassword', admin_password);
+        }
+        // Recargamos todo para asegurar que el sistema inicie limpio
+        window.location.reload();
     };
 
-    const handleLogout = () => {
+    const handleLogout = useCallback(() => {
         setCurrentUser(null);
         localStorage.removeItem('currentUser');
         setActiveTab('dashboard');
-    };
+    }, []);
+
+    // --- INACTIVIDAD (2.5 minutos = 150000ms) ---
+    useEffect(() => {
+        if (!currentUser) return;
+
+        let timer;
+        const resetTimer = () => {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => {
+                handleLogout();
+                // Opcional: recargar al cerrar sesión para máxima limpieza
+                window.location.reload();
+            }, 150000);
+        };
+
+        const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+        events.forEach(e => document.addEventListener(e, resetTimer));
+
+        resetTimer();
+
+        return () => {
+            if (timer) clearTimeout(timer);
+            events.forEach(e => document.removeEventListener(e, resetTimer));
+        };
+    }, [currentUser, handleLogout]);
 
     const authFetch = useCallback((url, options = {}) => {
         return fetch(url, {
@@ -124,11 +180,11 @@ function App() {
             hoverBg: 'hover:bg-orange-50/80',
         },
         {
-            key: 'mantenimiento',
-            label: 'Mantenimiento',
-            value: stats.mantenimiento || 0,
-            trend: 'Alerta',
-            icon: Wrench,
+            key: 'sobrantes',
+            label: 'Sobrantes (No Registrados)',
+            value: stats.sobrantes || 0,
+            trend: 'Auditoría',
+            icon: AlertTriangle,
             color: 'red',
             ring: 'ring-red-400',
             textColor: 'text-red-600',
@@ -174,10 +230,10 @@ function App() {
                                         window.dispatchEvent(new CustomEvent('data-updated'));
                                     }}
                                 >
-                                    <option value="consolidado">CONSOLIDADO</option>
-                                    <option value="tierras">TIERRAS</option>
-                                    <option value="justicia">JUSTICIA</option>
-                                    <option value="presidencia">PRESIDENCIA</option>
+                                    {allowedInstitutions.includes('consolidado') && <option value="consolidado">CONSOLIDADO</option>}
+                                    {allowedInstitutions.includes('tierras') && <option value="tierras">TIERRAS</option>}
+                                    {allowedInstitutions.includes('justicia') && <option value="justicia">JUSTICIA</option>}
+                                    {allowedInstitutions.includes('presidencia') && <option value="presidencia">PRESIDENCIA</option>}
                                 </select>
                                 {institution === 'presidencia' && (
                                     <a
@@ -194,35 +250,31 @@ function App() {
                             {/* Botones escritorio */}
                             <div className="hidden md:flex items-center gap-2">
                                 <div className="flex bg-slate-100 p-1.5 rounded-xl border-2 border-indigo-200 shadow-inner">
-                                    <button
-                                        onClick={() => setInstitution('consolidado')}
-                                        className={`px-2.5 py-1 text-[11px] font-black rounded-lg transition-all ${institution === 'consolidado' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
-                                    >CONSOLIDADO</button>
-                                    <button
-                                        onClick={() => setInstitution('tierras')}
-                                        className={`px-2.5 py-1 text-[11px] font-black rounded-lg transition-all ${institution === 'tierras' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
-                                    >TIERRAS</button>
-                                    <button
-                                        onClick={() => setInstitution('justicia')}
-                                        className={`px-2.5 py-1 text-[11px] font-black rounded-lg transition-all ${institution === 'justicia' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
-                                    >JUSTICIA</button>
-                                    <button
-                                        onClick={() => setInstitution('presidencia')}
-                                        className={`px-2.5 py-1 text-[11px] font-black rounded-lg transition-all ${institution === 'presidencia' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
-                                    >PRESIDENCIA</button>
+                                    {allowedInstitutions.includes('consolidado') && (
+                                        <button
+                                            onClick={() => setInstitution('consolidado')}
+                                            className={`px-2.5 py-1 text-[11px] font-black rounded-lg transition-all ${institution === 'consolidado' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
+                                        >CONSOLIDADO</button>
+                                    )}
+                                    {allowedInstitutions.includes('tierras') && (
+                                        <button
+                                            onClick={() => setInstitution('tierras')}
+                                            className={`px-2.5 py-1 text-[11px] font-black rounded-lg transition-all ${institution === 'tierras' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
+                                        >TIERRAS</button>
+                                    )}
+                                    {allowedInstitutions.includes('justicia') && (
+                                        <button
+                                            onClick={() => setInstitution('justicia')}
+                                            className={`px-2.5 py-1 text-[11px] font-black rounded-lg transition-all ${institution === 'justicia' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
+                                        >JUSTICIA</button>
+                                    )}
+                                    {allowedInstitutions.includes('presidencia') && (
+                                        <button
+                                            onClick={() => setInstitution('presidencia')}
+                                            className={`px-2.5 py-1 text-[11px] font-black rounded-lg transition-all ${institution === 'presidencia' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
+                                        >PRESIDENCIA</button>
+                                    )}
                                 </div>
-
-                                {institution === 'presidencia' && (
-                                    <a
-                                        href="https://siaf-frontend.pages.dev/"
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="px-3 py-1.5 bg-indigo-600 text-white text-[11px] font-black rounded-lg shadow-sm hover:bg-indigo-700 transition-all flex items-center gap-1.5 active:scale-95"
-                                    >
-                                        <ExternalLink size={14} />
-                                        IR A SIAF
-                                    </a>
-                                )}
                             </div>
                             <button className="p-2 text-slate-500 hover:bg-slate-100 rounded-full relative">
                                 <Bell size={18} />
@@ -345,9 +397,9 @@ function App() {
                         {activeTab === 'migraciones' && <MigracionView authFetch={authFetch} />}
                         {activeTab === 'generar' && <GenerarActaView authFetch={authFetch} currentUser={currentUser} />}
                         {activeTab === 'historial' && <HistorialActasView authFetch={authFetch} />}
-                        {activeTab === 'control-activos' && <ControlActivosView authFetch={authFetch} />}
+                        {activeTab === 'control-activos' && <ControlActivosView authFetch={authFetch} currentUser={currentUser} />}
                         {activeTab === 'bitacora' && <BitacoraView authFetch={authFetch} />}
-                        {activeTab === 'accesos' && currentUser?.rol === 'admin' && <GestionAccesosView authFetch={authFetch} currentUser={currentUser} />}
+                        {activeTab === 'accesos' && currentUser?.rol === 'admin' && <GestionAccesosView authFetch={authFetch} currentUser={currentUser} adminPassword={adminPassword} />}
                     </div>
                 </main>
             </div>

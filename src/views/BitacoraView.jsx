@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Search, BookOpen, ArrowRightLeft, RotateCcw, Download } from 'lucide-react';
+import { exportToExcel } from '../utils/excelExport';
 
 const TIPO_CONFIG = {
     'Asignación': { label: 'Asignación', class: 'bg-blue-100 text-blue-700 border-blue-200', dot: 'bg-blue-500', border: 'border-l-4 border-l-blue-400' },
@@ -10,6 +11,13 @@ const fmtDate = (d) => {
     if (!d) return '—';
     const dt = new Date(d);
     return dt.toLocaleString('es-BO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
+const getInstitutionStyle = (inst) => {
+    const i = (inst || '').toUpperCase();
+    if (i === 'TIERRAS') return 'bg-emerald-50 text-emerald-600 border-emerald-100';
+    if (i === 'JUSTICIA') return 'bg-amber-50 text-amber-600 border-amber-100';
+    return 'bg-blue-50 text-blue-600 border-blue-100';
 };
 
 const BitacoraView = ({ authFetch }) => {
@@ -36,7 +44,13 @@ const BitacoraView = ({ authFetch }) => {
 
     const filtered = useMemo(() => {
         let list = registros;
-        if (tipoFiltro !== 'todos') list = list.filter(r => r.tipo_acta === tipoFiltro);
+        if (tipoFiltro !== 'todos') {
+            if (tipoFiltro === 'Auditoría') {
+                list = list.filter(r => (r.tipo_acta || '').startsWith('Auditoría'));
+            } else {
+                list = list.filter(r => r.tipo_acta === tipoFiltro);
+            }
+        }
         const t = filter.toLowerCase().trim();
         if (!t) return list;
         return list.filter(r =>
@@ -47,15 +61,26 @@ const BitacoraView = ({ authFetch }) => {
         );
     }, [registros, filter, tipoFiltro]);
 
-    const exportCSV = () => {
-        const header = 'Código,Descripción,Responsable,Tipo,Fecha,Técnico,Observaciones';
-        const rows = filtered.map(r =>
-            [r.codigo_activo, `"${r.descripcion}"`, `"${r.responsable || ''}"`, r.tipo_acta,
-            fmtDate(r.fecha_emision), `"${r.realizado_por || ''}"`, `"${r.observaciones || ''}"`].join(',')
-        );
-        const blob = new Blob([header + '\n' + rows.join('\n')], { type: 'text/csv' });
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = `bitacora_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+    const exportCSV = async () => {
+        const fechaHoy = new Date().toLocaleDateString('es-ES');
+        await exportToExcel({
+            filename: `Bitacora_Movimientos_${new Date().toISOString().slice(0, 10)}`,
+            sheetName: 'Bitácora',
+            title: 'BITÁCORA DE MOVIMIENTOS DE ACTIVOS — MINISTERIO DE LA PRESIDENCIA',
+            subtitle: `Fecha: ${fechaHoy}  ·  Registros: ${filtered.length}`,
+            columns: ['Código Activo', 'Descripción', 'Responsable', 'Tipo de Movimiento', 'Fecha', 'Técnico', 'Observaciones'],
+            rows: filtered.map(r => [
+                r.codigo_activo || '',
+                r.descripcion || '',
+                r.responsable || '',
+                r.tipo_acta || '',
+                fmtDate(r.fecha_emision),
+                r.realizado_por || '',
+                r.observaciones || '',
+            ]),
+            headerColor: 'FF4A1A7C',
+            accentColor: 'FFF3E8FE',
+        });
     };
 
     return (
@@ -78,7 +103,7 @@ const BitacoraView = ({ authFetch }) => {
                 <div className="flex gap-2 flex-wrap">
                     {/* Filtro tipo */}
                     <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-[11px] font-black">
-                        {['todos', 'Asignación', 'Devolución'].map(t => (
+                        {['todos', 'Asignación', 'Devolución', 'Auditoría'].map(t => (
                             <button key={t} onClick={() => setTipoFiltro(t)}
                                 className={`px-2.5 py-1 rounded-md transition-all uppercase ${tipoFiltro === t ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
                                 {t === 'todos' ? 'Todos' : t}
@@ -106,25 +131,40 @@ const BitacoraView = ({ authFetch }) => {
                 ) : (
                     <>
                         {/* Desktop */}
-                        <div className="hidden md:block overflow-x-auto">
+                        <div className="hidden md:block overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar">
                             <table className="w-full text-left text-sm">
-                                <thead>
+                                <thead className="sticky top-0 z-20">
                                     <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500 font-bold">
-                                        <th className="px-4 py-3">Código</th>
-                                        <th className="px-4 py-3">Descripción</th>
-                                        <th className="px-4 py-3">Responsable</th>
-                                        <th className="px-4 py-3">Tipo</th>
-                                        <th className="px-4 py-3">Fecha</th>
-                                        <th className="px-4 py-3">Técnico</th>
+                                        <th className="px-4 py-3 bg-slate-50">Código</th>
+                                        <th className="px-4 py-3 bg-slate-50">Descripción</th>
+                                        <th className="px-4 py-3 bg-slate-50">Responsable</th>
+                                        <th className="px-4 py-3 bg-slate-50">Tipo</th>
+                                        <th className="px-4 py-3 bg-slate-50">Fecha</th>
+                                        <th className="px-4 py-3 bg-slate-50">Técnico</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
                                     {filtered.map((r, i) => {
-                                        const cfg = TIPO_CONFIG[r.tipo_acta] || TIPO_CONFIG['Asignación'];
+                                        const typeKey = (r.tipo_acta || '');
+                                        const isAudit = typeKey.startsWith('Auditoría');
+                                        const cfg = TIPO_CONFIG[r.tipo_acta] || (isAudit ? {
+                                            label: typeKey,
+                                            class: 'bg-violet-100 text-violet-700 border-violet-200',
+                                            dot: 'bg-violet-500',
+                                            border: 'border-l-4 border-l-violet-400'
+                                        } : TIPO_CONFIG['Asignación']);
+
                                         return (
                                             <tr key={`${r.acta_id}-${i}`} className={`transition-colors hover:bg-slate-50 ${cfg.border}`}>
                                                 <td className="px-4 py-2.5">
-                                                    <span className="font-mono font-bold text-xs text-slate-800 bg-slate-100 px-2 py-0.5 rounded">{r.codigo_activo}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-mono font-bold text-xs text-slate-800 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 uppercase">{r.codigo_activo}</span>
+                                                        {r.institucion && (
+                                                            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${getInstitutionStyle(r.institucion)}`}>
+                                                                {r.institucion}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-4 py-2.5 text-xs text-slate-600 max-w-[260px]">
                                                     <span className="line-clamp-2">{r.descripcion}</span>
@@ -162,7 +202,14 @@ const BitacoraView = ({ authFetch }) => {
                                     return (
                                         <div key={`mob-${r.acta_id}-${i}`} className={`p-3 ${cfg.border}`}>
                                             <div className="flex justify-between items-start gap-2">
-                                                <span className="font-mono font-bold text-xs bg-slate-100 px-2 py-0.5 rounded">{r.codigo_activo}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-mono font-bold text-xs bg-slate-50 px-2 py-0.5 rounded border border-slate-100 uppercase">{r.codigo_activo}</span>
+                                                    {r.institucion && (
+                                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${getInstitutionStyle(r.institucion)}`}>
+                                                            {r.institucion}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border ${cfg.class}`}>
                                                     <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />{r.tipo_acta}
                                                 </span>

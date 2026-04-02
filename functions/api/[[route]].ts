@@ -7,11 +7,28 @@ type Bindings = {
     DB_JUSTICIA: D1Database; // Ministerio de Justicia
     DB_PRESIDENCIA: D1Database; // Presidencia
     ADMIN_PASSWORD: string;   // Contraseña global
+    CACHE: KVNamespace;       // KV Cache para CONSOLIDADO
 };
 
 const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 
-// Middleware CORS — necesario para que el navegador no bloquee con 405
+// ─── MIDDLEWARES Y CONFIGURACIÓN ─────────────────────────────────────────────
+
+// Helper principal para obtener la DB correcta
+const getDB = (c: any): D1Database => {
+    // Si viene un target específico (por header), lo priorizamos (para CONSOLIDADO)
+    const target = c.req.header('x-target-institution');
+    if (target) {
+        const t = target.toLowerCase();
+        if (t === 'justicia') return c.env.DB_JUSTICIA;
+        if (t === 'presidencia') return c.env.DB_PRESIDENCIA;
+        return c.env.DB;
+    }
+    // Si no, usamos la DB asignada al contexto por el middleware de institución
+    return (c as any).db || c.env.DB;
+};
+
+// 1. Middleware CORS
 app.use('*', async (c, next) => {
     if (c.req.method === 'OPTIONS') {
         return new Response(null, {
@@ -19,7 +36,7 @@ app.use('*', async (c, next) => {
             headers: {
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type, x-institution, x-admin-password',
+                'Access-Control-Allow-Headers': 'Content-Type, x-institution, x-target-institution, x-admin-password',
             },
         });
     }
@@ -27,10 +44,10 @@ app.use('*', async (c, next) => {
     c.res.headers.set('Access-Control-Allow-Origin', '*');
 });
 
-// Middleware para seleccionar la DB
+// 2. Middleware de Selección de DB (por defecto)
 app.use('*', async (c, next) => {
-    const institution = c.req.header('x-institution') || 'tierras';
-    // Mapeamos la DB correcta al contexto para uso interno
+    const institution = (c.req.header('x-institution') || 'tierras').toLowerCase();
+
     if (institution === 'justicia') {
         (c as any).db = c.env.DB_JUSTICIA;
     } else if (institution === 'presidencia') {
@@ -38,8 +55,11 @@ app.use('*', async (c, next) => {
     } else {
         (c as any).db = c.env.DB;
     }
+    await next();
+});
 
-    // Middleware de seguridad: Validar contraseña en rutas sensibles
+// 3. Middleware de Seguridad (Admin Password)
+app.use('*', async (c, next) => {
     const method = c.req.method;
     const path = c.req.path;
     const sensitivePaths = ['/migrate'];
@@ -50,29 +70,21 @@ app.use('*', async (c, next) => {
     if (isSensitive) {
         const providedPassword = c.req.header('x-admin-password');
         if (providedPassword !== c.env.ADMIN_PASSWORD) {
-            return c.json({ error: 'Contraseña de administrador incorrecta o no proporcionada.' }, 401);
+            return c.json({ error: 'Autorización administrativa requerida.' }, 401);
         }
-    }
-
-    if (!(c as any).db) {
-        return c.json({ error: `Configuración de Base de Datos para '${institution}' no encontrada.` }, 500);
     }
     await next();
 });
 
-// Helper para errores amigables
-const formatError = (err: any) => {
-    const msg = err.message || '';
-    if (msg.includes('UNIQUE constraint failed: usuarios.ci')) return 'El CI ya está registrado para otro funcionario.';
-    if (msg.includes('UNIQUE constraint failed: activos.codigo_activo')) return 'El código de activo ya existe en el sistema.';
-    if (msg.includes('FOREIGN KEY constraint failed')) return 'No se puede eliminar o modificar porque este registro está siendo usado.';
-    if (msg.includes('D1_TYPE_ERROR')) return 'Error en el formato de los datos enviados.';
-    return msg;
-};
+// 4. Helper para diagnóstico de vinculación
+app.use('*', async (c, next) => {
+    if (!getDB(c)) {
+        return c.json({ error: "Configuración de Base de Datos (DB) no encontrada." }, 500);
+    }
+    await next();
+});
 
-const getDB = (c: any): D1Database => (c as any).db;
-
-// Manejador de errores global SEGURO (Oculta detalles técnicos en producción)
+// 5. Manejador de errores global SEGURO
 app.onError((err, c) => {
     console.error(`[API ERROR] ${err.message}`, err.stack);
     return c.json({
@@ -81,13 +93,55 @@ app.onError((err, c) => {
     }, 500);
 });
 
-// Ayuda para diagnóstico de vinculación
-app.use('*', async (c, next) => {
-    if (!getDB(c)) {
-        return c.json({ error: "Configuración de Base de Datos (DB) no encontrada." }, 500);
-    }
-    await next();
-});
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+const formatError = (err: any) => {
+    const msg = err.message || '';
+    // Errores conocidos y seguros
+    if (msg.includes('UNIQUE constraint failed: usuarios.ci')) return 'El CI ya está registrado para otro funcionario.';
+    if (msg.includes('UNIQUE constraint failed: activos.codigo_activo')) return 'El código de activo ya existe en el sistema.';
+    if (msg.includes('FOREIGN KEY constraint failed')) return 'No se puede eliminar o modificar porque este registro está siendo usado.';
+    if (msg.includes('D1_TYPE_ERROR')) return 'Error en el formato de los datos enviados.';
+
+    // Si no es un error conocido, devolvemos un mensaje genérico para seguridad
+    return 'Ocurrió un error inesperado al procesar la solicitud.';
+};
+
+// KV Cache Helper
+async function kvCache<T>(
+    kv: KVNamespace | undefined,
+    key: string,
+    fetchFn: () => Promise<T>,
+    ttlSeconds = 60
+): Promise<T> {
+    if (!kv) return fetchFn();
+    try {
+        const cached = await kv.get(key, 'json');
+        if (cached !== null) return cached as T;
+    } catch { }
+    const fresh = await fetchFn();
+    try {
+        await kv.put(key, JSON.stringify(fresh), { expirationTtl: ttlSeconds });
+    } catch { }
+    return fresh;
+}
+
+// Invalidator de Caché
+async function invalidateConsolidadoCache(kv: KVNamespace | undefined) {
+    if (!kv) return;
+    try {
+        await Promise.all([
+            kv.delete('consolidado:stats'),
+            kv.delete('consolidado:activos'),
+            kv.delete('consolidado:activos:Asignado'),
+            kv.delete('consolidado:activos:Disponible'),
+            kv.delete('consolidado:activos:Sobrante'),
+            kv.delete('consolidado:usuarios'),
+        ]);
+    } catch { }
+}
+
+// ─── ENDPOINTS ───────────────────────────────────────────────────────────────
 
 // --- ESTADISTICAS ---
 app.get('/stats', async (c) => {
@@ -100,26 +154,27 @@ app.get('/stats', async (c) => {
                     COUNT(*) as total,
                     COALESCE(SUM(CASE WHEN estado_actual = 'Asignado' THEN 1 ELSE 0 END), 0) as asignados,
                     COALESCE(SUM(CASE WHEN estado_actual = 'Disponible' THEN 1 ELSE 0 END), 0) as disponibles,
-                    COALESCE(SUM(CASE WHEN estado_actual = 'Mantenimiento' THEN 1 ELSE 0 END), 0) as mantenimiento
+                    COALESCE(SUM(CASE WHEN estado_actual = 'Sobrante' THEN 1 ELSE 0 END), 0) as sobrantes
                 FROM activos
             `).first();
-            return s || { total: 0, asignados: 0, disponibles: 0, mantenimiento: 0 };
+            return s || { total: 0, asignados: 0, disponibles: 0, sobrantes: 0 };
         };
 
         if (institution === 'consolidado') {
-            const [s1, s2, s3] = await Promise.all([
-                fetchDBStats(c.env.DB),
-                fetchDBStats(c.env.DB_JUSTICIA),
-                fetchDBStats(c.env.DB_PRESIDENCIA)
-            ]);
-
-            const merged = {
-                total: Number(s1.total) + Number(s2.total) + Number(s3.total),
-                asignados: Number(s1.asignados) + Number(s2.asignados) + Number(s3.asignados),
-                disponibles: Number(s1.disponibles) + Number(s2.disponibles) + Number(s3.disponibles),
-                mantenimiento: Number(s1.mantenimiento) + Number(s2.mantenimiento) + Number(s3.mantenimiento),
-                institucion: 'CONSOLIDADO'
-            };
+            const merged = await kvCache(c.env.CACHE, 'consolidado:stats', async () => {
+                const [s1, s2, s3] = await Promise.all([
+                    fetchDBStats(c.env.DB),
+                    fetchDBStats(c.env.DB_JUSTICIA),
+                    fetchDBStats(c.env.DB_PRESIDENCIA)
+                ]);
+                return {
+                    total: Number(s1.total) + Number(s2.total) + Number(s3.total),
+                    asignados: Number(s1.asignados) + Number(s2.asignados) + Number(s3.asignados),
+                    disponibles: Number(s1.disponibles) + Number(s2.disponibles) + Number(s3.disponibles),
+                    sobrantes: Number(s1.sobrantes) + Number(s2.sobrantes) + Number(s3.sobrantes),
+                    institucion: 'CONSOLIDADO'
+                };
+            }, 30); // TTL 30s para stats
             return c.json(merged);
         }
 
@@ -127,7 +182,7 @@ app.get('/stats', async (c) => {
         return c.json({ ...stats, institucion: institution.toUpperCase() });
     } catch (e: any) {
         console.error("Error en query /stats:", e.message);
-        return c.json({ error: e.message }, 500);
+        return c.json({ error: formatError(e) }, 500);
     }
 });
 
@@ -144,12 +199,15 @@ app.get('/usuarios', async (c) => {
     };
 
     if (institution === 'consolidado') {
-        const [r1, r2, r3] = await Promise.all([
-            fetchDBUsuarios(c.env.DB, 'TIERRAS'),
-            fetchDBUsuarios(c.env.DB_JUSTICIA, 'JUSTICIA'),
-            fetchDBUsuarios(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
-        ]);
-        return c.json([...r1, ...r2, ...r3]);
+        const result = await kvCache(c.env.CACHE, 'consolidado:usuarios', async () => {
+            const [r1, r2, r3] = await Promise.all([
+                fetchDBUsuarios(c.env.DB, 'TIERRAS'),
+                fetchDBUsuarios(c.env.DB_JUSTICIA, 'JUSTICIA'),
+                fetchDBUsuarios(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
+            ]);
+            return [...r1, ...r2, ...r3];
+        }, 60);
+        return c.json(result);
     }
 
     const results = await fetchDBUsuarios(getDB(c), institution.toUpperCase());
@@ -158,14 +216,15 @@ app.get('/usuarios', async (c) => {
 
 app.post('/usuarios', async (c) => {
     const body = await c.req.json();
-    const { nombre_completo, ci, cargo, unidad, oficina, piso } = body;
+    const { nombre_completo, ci, cargo, unidad, oficina, piso, registrado_por } = body;
 
     try {
         const result = await getDB(c).prepare(
-            'INSERT INTO usuarios (nombre_completo, ci, cargo, unidad, oficina, piso) VALUES (?, ?, ?, ?, ?, ?)'
-        ).bind(nombre_completo ?? '', ci ?? '', cargo ?? null, unidad ?? null, oficina ?? null, piso ?? null).run();
+            'INSERT INTO usuarios (nombre_completo, ci, cargo, unidad, oficina, piso, registrado_por) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        ).bind(nombre_completo ?? '', ci ?? '', cargo ?? null, unidad ?? null, oficina ?? null, piso ?? null, registrado_por ?? null).run();
 
-        const newUser = { id: result.meta.last_row_id, nombre_completo, ci, cargo, unidad, oficina, piso };
+        const newUser = { id: result.meta.last_row_id, nombre_completo, ci, cargo, unidad, oficina, piso, registrado_por };
+        await invalidateConsolidadoCache(c.env.CACHE);
         return c.json({ success: true, user: newUser }, 201);
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 400);
@@ -182,6 +241,7 @@ app.put('/usuarios/:id', async (c) => {
         await getDB(c).prepare(
             'UPDATE usuarios SET nombre_completo=?, ci=?, cargo=?, unidad=?, oficina=?, piso=? WHERE id=?'
         ).bind(nombre_completo ?? '', ci ?? '', cargo ?? null, unidad ?? null, oficina ?? null, piso ?? null, id).run();
+        await invalidateConsolidadoCache(c.env.CACHE);
         return c.json({ success: true, id });
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 400);
@@ -209,12 +269,16 @@ app.get('/activos', async (c) => {
     };
 
     if (institution === 'consolidado') {
-        const [r1, r2, r3] = await Promise.all([
-            fetchDBActivos(c.env.DB, 'TIERRAS'),
-            fetchDBActivos(c.env.DB_JUSTICIA, 'JUSTICIA'),
-            fetchDBActivos(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
-        ]);
-        return c.json([...r1, ...r2, ...r3]);
+        const cacheKey = estado ? `consolidado:activos:${estado}` : 'consolidado:activos';
+        const result = await kvCache(c.env.CACHE, cacheKey, async () => {
+            const [r1, r2, r3] = await Promise.all([
+                fetchDBActivos(c.env.DB, 'TIERRAS'),
+                fetchDBActivos(c.env.DB_JUSTICIA, 'JUSTICIA'),
+                fetchDBActivos(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
+            ]);
+            return [...r1, ...r2, ...r3];
+        }, 60);
+        return c.json(result);
     }
 
     const results = await fetchDBActivos(getDB(c), institution.toUpperCase());
@@ -253,13 +317,15 @@ app.get('/activos/usuario/:id', async (c) => {
 
 app.post('/activos', async (c) => {
     const body = await c.req.json();
-    const { codigo_activo, descripcion, serie, estado_actual } = body;
+    const { codigo_activo, descripcion, serie, estado_actual, registrado_por } = body;
     try {
         const result = await getDB(c).prepare(
-            'INSERT INTO activos (codigo_activo, descripcion, serie, estado_actual) VALUES (?, ?, ?, ?)'
-        ).bind(codigo_activo ?? '', descripcion ?? '', serie ?? null, estado_actual || 'Disponible').run();
+            'INSERT INTO activos (codigo_activo, descripcion, serie, estado_actual, registrado_por) VALUES (?, ?, ?, ?, ?)'
+        ).bind(codigo_activo ?? '', descripcion ?? '', serie ?? null, estado_actual || 'Disponible', registrado_por ?? null).run();
         const id = result.meta.last_row_id;
-        return c.json({ success: true, id, activo: { id, codigo_activo, descripcion, serie: serie || null, estado_actual: estado_actual || 'Disponible' } }, 201);
+        // Invalidar caché consolidado al crear activos
+        await invalidateConsolidadoCache(c.env.CACHE);
+        return c.json({ success: true, id, activo: { id, codigo_activo, descripcion, serie: serie || null, estado_actual: estado_actual || 'Disponible', registrado_por } }, 201);
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 400);
     }
@@ -272,6 +338,7 @@ app.put('/activos/:id/liberar', async (c) => {
         await getDB(c).prepare(
             'UPDATE activos SET estado_actual = ?, usuario_actual_id = NULL, unidad = NULL, oficina = NULL, piso = NULL WHERE id = ?'
         ).bind('Disponible', id).run();
+        await invalidateConsolidadoCache(c.env.CACHE);
         return c.json({ success: true, id });
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 400);
@@ -287,20 +354,13 @@ app.put('/activos/:id', async (c) => {
         await getDB(c).prepare(
             'UPDATE activos SET codigo_activo=?, descripcion=?, serie=?, estado_actual=? WHERE id=?'
         ).bind(codigo_activo ?? '', descripcion ?? '', serie ?? null, estado_actual || 'Disponible', id).run();
+        await invalidateConsolidadoCache(c.env.CACHE);
         return c.json({ success: true, id });
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 400);
     }
 });
 
-// Nuevo: Activos por usuario
-app.get('/activos/usuario/:id', async (c) => {
-    const userId = c.req.param('id');
-    const { results } = await getDB(c).prepare(
-        'SELECT * FROM activos WHERE usuario_actual_id = ? ORDER BY codigo_activo ASC'
-    ).bind(userId).all();
-    return c.json(results);
-});
 
 // Activos disponibles
 app.get('/activos/disponibles', async (c) => {
@@ -399,31 +459,53 @@ app.get('/activos/agrupados', async (c) => {
         return c.json(resultadoFinal);
     } catch (e: any) {
         console.error("Error en /activos/agrupados:", e.message);
-        return c.json({ error: e.message }, 500);
+        return c.json({ error: formatError(e) }, 500);
     }
 });
 
 // --- ACTAS ---
 app.get('/actas', async (c) => {
     try {
+        const institution = (c.req.header('x-institution') || 'tierras').toLowerCase();
         const usuario_id = c.req.query('usuario_id');
         const tipo = c.req.query('tipo');
 
-        let query = 'SELECT * FROM actas';
-        const params: any[] = [];
+        const fetchActasFromDB = async (db: D1Database, instName: string) => {
+            let query = `
+                SELECT a.*, u.nombre_completo as usuario, ? as institucion
+                FROM actas a
+                JOIN usuarios u ON a.usuario_id = u.id
+            `;
+            const params: any[] = [instName];
 
-        if (usuario_id || tipo) {
             const conditions = [];
-            if (usuario_id) { conditions.push('usuario_id = ?'); params.push(usuario_id); }
-            if (tipo) { conditions.push('tipo_acta = ?'); params.push(tipo); }
-            query += ' WHERE ' + conditions.join(' AND ');
+            if (usuario_id) { conditions.push('a.usuario_id = ?'); params.push(usuario_id); }
+            if (tipo) { conditions.push('a.tipo_acta = ?'); params.push(tipo); }
+
+            if (conditions.length > 0) {
+                query += ' WHERE ' + conditions.join(' AND ');
+            }
+
+            query += ' ORDER BY a.fecha_emision DESC';
+            const { results } = await db.prepare(query).bind(...params).all();
+            return results || [];
+        };
+
+        if (institution === 'consolidado') {
+            const [r1, r2, r3] = await Promise.all([
+                fetchActasFromDB(c.env.DB, 'TIERRAS'),
+                fetchActasFromDB(c.env.DB_JUSTICIA, 'JUSTICIA'),
+                fetchActasFromDB(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
+            ]);
+            return c.json([...r1, ...r2, ...r3].sort((a: any, b: any) =>
+                new Date(b.fecha_emision).getTime() - new Date(a.fecha_emision).getTime()
+            ));
         }
 
-        query += ' ORDER BY id DESC';
-        const { results } = await getDB(c).prepare(query).bind(...params).all();
-        return c.json(results || []);
+        const results = await fetchActasFromDB(getDB(c), institution.toUpperCase());
+        return c.json(results);
     } catch (e: any) {
-        return c.json({ error: e.message }, 500);
+        return c.json({ error: formatError(e) }, 500);
     }
 });
 
@@ -476,6 +558,7 @@ app.post('/actas', async (c) => {
 
         await getDB(c).batch([...detailStatements, ...statusUpdateStatements]);
 
+        await invalidateConsolidadoCache(c.env.CACHE);
         return c.json({ success: true, actaId });
     } catch (e: any) {
         console.error("Error al procesar acta o detalles:", e.message);
@@ -507,9 +590,10 @@ app.post('/activos/bulk', async (c) => {
 
     try {
         await getDB(c).batch(statements);
+        await invalidateConsolidadoCache(c.env.CACHE);
         return c.json({ success: true, count: assets.length });
     } catch (e: any) {
-        return c.json({ error: e.message }, 500);
+        return c.json({ error: formatError(e) }, 500);
     }
 });
 
@@ -634,46 +718,51 @@ app.post('/migrate', async (c) => {
         }
 
         console.log("Migración finalizada con resultados:", results);
+        await invalidateConsolidadoCache(c.env.CACHE);
         return c.json({ success: true, ...results });
     } catch (e: any) {
-        console.error("Error fatal en migración masiva:", e);
-        return c.json({ error: e.message }, 500);
+        console.error("Error fatal en migración masiva:", e.message);
+        return c.json({ error: formatError(e) }, 500);
     }
 });
 
 app.get('/actas/:id', async (c) => {
-    const id = c.req.param('id');
-    const acta = await getDB(c).prepare(`
-        SELECT a.*, u.nombre_completo, u.ci, u.cargo,
-               COALESCE(a.unidad, u.unidad) as unidad,
-               COALESCE(a.oficina, u.oficina) as oficina,
-               COALESCE(a.piso, u.piso) as piso
-        FROM actas a
-        JOIN usuarios u ON a.usuario_id = u.id
-        WHERE a.id = ?
-    `).bind(id).first();
+    try {
+        const id = c.req.param('id');
+        const targetInst = c.req.header('x-target-institution') || c.req.header('x-institution') || 'tierras';
 
-    if (!acta) return c.json({ error: 'Acta no encontrada' }, 404);
+        let db: D1Database;
+        const inst = targetInst.toLowerCase();
+        if (inst === 'justicia') db = c.env.DB_JUSTICIA;
+        else if (inst === 'presidencia') db = c.env.DB_PRESIDENCIA;
+        else db = c.env.DB;
 
-    const { results: activos } = await getDB(c).prepare(`
-        SELECT ac.id, da.estado_fisico, ac.codigo_activo, ac.descripcion
-        FROM detalles_acta da
-        JOIN activos ac ON da.activo_id = ac.id
-        WHERE da.acta_id = ?
-    `).bind(id).all();
+        const acta = await db.prepare(`
+            SELECT a.*, u.nombre_completo, u.ci, u.cargo,
+                   COALESCE(a.unidad, u.unidad) as unidad,
+                   COALESCE(a.oficina, u.oficina) as oficina,
+                   COALESCE(a.piso, u.piso) as piso
+            FROM actas a
+            JOIN usuarios u ON a.usuario_id = u.id
+            WHERE a.id = ?
+        `).bind(id).first();
 
-    return c.json({ ...acta, activos });
+        if (!acta) return c.json({ error: 'Acta no encontrada' }, 404);
+
+        const { results: activos } = await db.prepare(`
+            SELECT ac.id, da.estado_fisico, ac.codigo_activo, ac.descripcion
+            FROM detalles_acta da
+            JOIN activos ac ON da.activo_id = ac.id
+            WHERE da.acta_id = ?
+        `).bind(id).all();
+
+        return c.json({ ...acta, activos });
+    } catch (e: any) {
+        return c.json({ error: formatError(e) }, 500);
+    }
 });
 
-app.get('/actas', async (c) => {
-    const { results } = await getDB(c).prepare(`
-        SELECT a.*, u.nombre_completo as usuario 
-        FROM actas a 
-        JOIN usuarios u ON a.usuario_id = u.id 
-        ORDER BY a.fecha_emision DESC
-    `).all();
-    return c.json(results);
-});
+// Redundant /actas route removed to avoid conflicts and support consolidation above.
 
 
 // Actualizar estado físico de un activo en un acta
@@ -693,23 +782,39 @@ app.put('/detalles_acta/estado', async (c) => {
 // --- AUDITORIAS FÍSICAS (PERSISTENCIA DE CONTROL) ---
 app.get('/auditorias/usuario/:id', async (c) => {
     const userId = c.req.param('id');
+    const targetInst = c.req.header('x-target-institution') || c.req.header('x-institution') || 'tierras';
+
     try {
-        const { results } = await getDB(c).prepare(
-            'SELECT activo_id, hallazgo, fecha_auditoria FROM auditorias_fisicas WHERE usuario_auditado_id = ?'
+        let db: D1Database;
+        const inst = targetInst.toLowerCase();
+        if (inst === 'justicia') db = c.env.DB_JUSTICIA;
+        else if (inst === 'presidencia') db = c.env.DB_PRESIDENCIA;
+        else db = c.env.DB;
+
+        const { results } = await db.prepare(
+            'SELECT activo_id, hallazgo, fecha_auditoria, observacion FROM auditorias_fisicas WHERE usuario_auditado_id = ?'
         ).bind(userId).all();
         return c.json(results || []);
     } catch (e: any) {
-        return c.json({ error: e.message }, 500);
+        return c.json({ error: formatError(e) }, 500);
     }
 });
 
 app.post('/auditorias', async (c) => {
     const body = await c.req.json();
-    const { usuario_auditado_id, activo_id, hallazgo } = body;
+    const { usuario_auditado_id, activo_id, hallazgo, realizado_por, institucion, observacion } = body;
+    const targetInst = institucion || c.req.header('x-target-institution') || c.req.header('x-institution') || 'tierras';
+
     try {
-        await getDB(c).prepare(
-            'INSERT INTO auditorias_fisicas (usuario_auditado_id, activo_id, hallazgo) VALUES (?, ?, ?)'
-        ).bind(usuario_auditado_id, activo_id, hallazgo).run();
+        let db: D1Database;
+        const inst = targetInst.toLowerCase();
+        if (inst === 'justicia') db = c.env.DB_JUSTICIA;
+        else if (inst === 'presidencia') db = c.env.DB_PRESIDENCIA;
+        else db = c.env.DB;
+
+        await db.prepare(
+            'INSERT INTO auditorias_fisicas (usuario_auditado_id, activo_id, hallazgo, realizado_por, observacion) VALUES (?, ?, ?, ?, ?)'
+        ).bind(usuario_auditado_id, activo_id, hallazgo, realizado_por ?? null, observacion ?? null).run();
         return c.json({ success: true });
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 400);
@@ -719,11 +824,19 @@ app.post('/auditorias', async (c) => {
 // Limpiar auditoría de un usuario (para reiniciar el proceso)
 app.delete('/auditorias/usuario/:id', async (c) => {
     const userId = c.req.param('id');
+    const targetInst = c.req.header('x-target-institution') || c.req.header('x-institution') || 'tierras';
+
     try {
-        await getDB(c).prepare('DELETE FROM auditorias_fisicas WHERE usuario_auditado_id = ?').bind(userId).run();
+        let db: D1Database;
+        const inst = targetInst.toLowerCase();
+        if (inst === 'justicia') db = c.env.DB_JUSTICIA;
+        else if (inst === 'presidencia') db = c.env.DB_PRESIDENCIA;
+        else db = c.env.DB;
+
+        await db.prepare('DELETE FROM auditorias_fisicas WHERE usuario_auditado_id = ?').bind(userId).run();
         return c.json({ success: true });
     } catch (e: any) {
-        return c.json({ error: e.message }, 500);
+        return c.json({ error: formatError(e) }, 500);
     }
 });
 
@@ -737,7 +850,7 @@ app.delete('/api/auditorias/usuario/:userId/activo/:activoId', async (c) => {
         ).bind(userId, activoId).run();
         return c.json({ success: true });
     } catch (e: any) {
-        return c.json({ error: e.message }, 500);
+        return c.json({ error: formatError(e) }, 500);
     }
 });
 
@@ -747,31 +860,65 @@ app.delete('/api/auditorias/usuario/:userId/activo/:activoId', async (c) => {
 // ============================================================
 app.get('/bitacora', async (c) => {
     try {
+        const institution = (c.req.header('x-institution') || 'tierras').toLowerCase();
         const limit = parseInt(c.req.query('limit') || '200');
-        const filter = c.req.query('filter') || '';
 
-        const query = `
-            SELECT
-                a.codigo_activo,
-                a.descripcion,
-                u.nombre_completo  AS responsable,
-                ac.tipo_acta,
-                ac.fecha_emision,
-                ac.realizado_por,
-                ac.observaciones,
-                a.oficina,
-                a.piso,
-                ac.id              AS acta_id
-            FROM detalles_acta da
-            JOIN actas ac       ON da.acta_id  = ac.id
-            JOIN activos a      ON da.activo_id = a.id
-            LEFT JOIN usuarios u ON ac.usuario_id = u.id
-            ORDER BY ac.fecha_emision DESC, ac.id DESC
-            LIMIT ?
-        `;
+        const fetchBitacoraFromDB = async (db: D1Database, instName: string) => {
+            const query = `
+                SELECT *, ? as institucion FROM (
+                    SELECT
+                        a.codigo_activo,
+                        a.descripcion,
+                        u.nombre_completo  AS responsable,
+                        ac.tipo_acta,
+                        ac.fecha_emision,
+                        ac.realizado_por,
+                        ac.observaciones,
+                        a.oficina,
+                        a.piso,
+                        ac.id              AS acta_id
+                    FROM detalles_acta da
+                    JOIN actas ac       ON da.acta_id  = ac.id
+                    JOIN activos a      ON da.activo_id = a.id
+                    LEFT JOIN usuarios u ON ac.usuario_id = u.id
+                    
+                    UNION ALL
+                    
+                    SELECT
+                        a.codigo_activo,
+                        a.descripcion,
+                        u.nombre_completo  AS responsable,
+                        'Auditoría (' || af.hallazgo || ')' as tipo_acta,
+                        af.fecha_auditoria as fecha_emision,
+                        af.realizado_por,
+                        'Hallazgo físico en auditoría' as observaciones,
+                        a.oficina,
+                        a.piso,
+                        af.id              AS acta_id
+                    FROM auditorias_fisicas af
+                    JOIN activos a      ON af.activo_id = a.id
+                    JOIN usuarios u ON af.usuario_auditado_id = u.id
+                )
+                ORDER BY fecha_emision DESC
+                LIMIT ?
+            `;
+            const { results } = await db.prepare(query).bind(instName, limit).all();
+            return results || [];
+        };
 
-        const { results } = await getDB(c).prepare(query).bind(limit).all();
-        return c.json(results || []);
+        if (institution === 'consolidado') {
+            const [r1, r2, r3] = await Promise.all([
+                fetchBitacoraFromDB(c.env.DB, 'TIERRAS'),
+                fetchBitacoraFromDB(c.env.DB_JUSTICIA, 'JUSTICIA'),
+                fetchBitacoraFromDB(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
+            ]);
+            return c.json([...r1, ...r2, ...r3].sort((a: any, b: any) =>
+                new Date(b.fecha_emision).getTime() - new Date(a.fecha_emision).getTime()
+            ).slice(0, limit));
+        }
+
+        const results = await fetchBitacoraFromDB(getDB(c), institution.toUpperCase());
+        return c.json(results);
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 500);
     }
@@ -804,6 +951,9 @@ app.post('/auth/login', async (c) => {
         if (!user) return c.json({ error: 'Usuario o contraseña incorrectos.' }, 401);
         if (!user.activo) return c.json({ error: 'Esta cuenta está desactivada. Contacte al administrador.' }, 403);
 
+        if (user.rol === 'admin') {
+            return c.json({ user, admin_password: c.env.ADMIN_PASSWORD });
+        }
         return c.json({ user });
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 500);
@@ -827,6 +977,8 @@ app.post('/auth/migrate', async (c) => {
 
         // Columna realizado_por en actas
         try { await getDB(c).prepare('ALTER TABLE actas ADD COLUMN realizado_por TEXT').run(); } catch { }
+        // Columna observacion en auditorias_fisicas
+        try { await getDB(c).prepare('ALTER TABLE auditorias_fisicas ADD COLUMN observacion TEXT').run(); } catch { }
 
         // Seed admin por defecto
         const hash = await hashPassword('admin123');
@@ -843,10 +995,46 @@ app.post('/auth/migrate', async (c) => {
 // Listar cuentas del sistema (admin only — validación en frontend)
 app.get('/system-users', async (c) => {
     try {
-        const users = await getDB(c).prepare(
-            'SELECT id, username, nombre, rol, activo, created_at FROM system_users ORDER BY rol DESC, nombre ASC'
-        ).all();
-        return c.json(users.results || []);
+        const institution = c.req.header('x-institution') || 'tierras';
+
+        const fetchDBSystemUsers = async (db: D1Database, instName: string) => {
+            const { results } = await db.prepare(
+                'SELECT id, username, nombre, rol, activo, created_at FROM system_users ORDER BY rol DESC, nombre ASC'
+            ).all();
+            return results.map((r: any) => ({ ...r, institucion: instName }));
+        };
+
+        const [r1, r2, r3] = await Promise.all([
+            fetchDBSystemUsers(c.env.DB, 'TIERRAS'),
+            fetchDBSystemUsers(c.env.DB_JUSTICIA, 'JUSTICIA'),
+            fetchDBSystemUsers(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
+        ]);
+
+        // Agrupar por username para saber en qué DBs está cada uno
+        const userMap = new Map();
+        [...r1, ...r2, ...r3].forEach(u => {
+            if (!userMap.has(u.username)) {
+                userMap.set(u.username, { ...u, instituciones: [u.institucion] });
+            } else {
+                const existing = userMap.get(u.username);
+                // Evitar duplicados en la lista de instituciones (por si acaso)
+                if (!existing.instituciones.includes(u.institucion)) {
+                    existing.instituciones.push(u.institucion);
+                }
+            }
+        });
+
+        // Si no estamos en consolidado, al menos ya tenemos la info completa de cada usuario
+        const allUsers = Array.from(userMap.values());
+
+        if (institution === 'consolidado') {
+            return c.json(allUsers);
+        }
+
+        // Si estamos en una inst específica, podrías filtrar, 
+        // pero para la "Gestión de Accesos" es mejor ver TODO el panorama del usuario.
+        // Por consistencia con la UI actual que espera ver a todos, devolvemos todos.
+        return c.json(allUsers);
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 500);
     }
@@ -855,34 +1043,99 @@ app.get('/system-users', async (c) => {
 // Crear cuenta del sistema
 app.post('/system-users', async (c) => {
     try {
-        const { username, nombre, password, rol } = await c.req.json();
+        const body = await c.req.json();
+        const { username, nombre, password, rol, instituciones } = body;
         if (!username || !nombre || !password) return c.json({ error: 'Faltan campos requeridos.' }, 400);
         const hash = await hashPassword(password);
-        await getDB(c).prepare(
-            'INSERT INTO system_users (username, nombre, password_hash, rol) VALUES (?, ?, ?, ?)'
-        ).bind(username.toLowerCase().trim(), nombre, hash, rol || 'tecnico').run();
+
+        // Si no se especifican instituciones, usar la actual del header
+        const targetInsts = (instituciones && Array.isArray(instituciones) && instituciones.length > 0)
+            ? instituciones
+            : [c.req.header('x-institution') || 'tierras'];
+
+        const statements: any[] = [];
+        targetInsts.forEach((inst: string) => {
+            let db: D1Database;
+            const i = inst.toLowerCase();
+            if (i === 'justicia') db = c.env.DB_JUSTICIA;
+            else if (i === 'presidencia') db = c.env.DB_PRESIDENCIA;
+            else db = c.env.DB;
+
+            statements.push({
+                db,
+                stmt: db.prepare('INSERT OR REPLACE INTO system_users (username, nombre, password_hash, rol, activo) VALUES (?, ?, ?, ?, ?)').bind(username.toLowerCase().trim(), nombre, hash, rol || 'tecnico', 1)
+            });
+        });
+
+        // Ejecutar en paralelo (D1 batch solo funciona sobre la misma DB, así que hacemos Promise.all de runs)
+        await Promise.all(statements.map(s => s.stmt.run()));
+
         return c.json({ success: true });
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 400);
     }
 });
 
-// Actualizar cuenta del sistema (rol, nombre, contraseña, activo)
+// Actualizar cuenta del sistema
 app.put('/system-users/:id', async (c) => {
     try {
-        const id = c.req.param('id');
-        const { nombre, password, rol, activo } = await c.req.json();
+        const idOrUsername = c.req.param('id');
+        const body = await c.req.json();
+        const { nombre, password, rol, activo, instituciones } = body;
 
-        if (password) {
-            const hash = await hashPassword(password);
-            await getDB(c).prepare(
-                'UPDATE system_users SET nombre = ?, password_hash = ?, rol = ?, activo = ? WHERE id = ?'
-            ).bind(nombre, hash, rol, activo !== undefined ? activo : 1, id).run();
-        } else {
-            await getDB(c).prepare(
-                'UPDATE system_users SET nombre = ?, rol = ?, activo = ? WHERE id = ?'
-            ).bind(nombre, rol, activo !== undefined ? activo : 1, id).run();
-        }
+        // Si instituciones está presente, actualizamos por username en todas las indicadas
+        const targetInsts = (instituciones && Array.isArray(instituciones) && instituciones.length > 0)
+            ? instituciones
+            : [c.req.header('x-institution') || 'tierras'];
+
+        const hash = password ? await hashPassword(password) : null;
+        const allPossibleInsts = ['tierras', 'justicia', 'presidencia'];
+
+        const syncPromises = allPossibleInsts.map(async (inst: string) => {
+            let db: D1Database;
+            const i = inst.toLowerCase();
+            if (i === 'justicia') db = c.env.DB_JUSTICIA;
+            else if (i === 'presidencia') db = c.env.DB_PRESIDENCIA;
+            else db = c.env.DB;
+
+            const isSelected = targetInsts.some(ti => ti.toLowerCase() === i);
+            const usernameToUse = idOrUsername.toLowerCase().trim(); // En este sistema usamos username como ID principal de facto
+
+            if (isSelected) {
+                // UPSERT: INSERT OR REPLACE
+                if (hash) {
+                    return db.prepare(
+                        'INSERT OR REPLACE INTO system_users (username, nombre, password_hash, rol, activo) VALUES (?, ?, ?, ?, ?)'
+                    ).bind(usernameToUse, nombre, hash, rol, activo !== undefined ? activo : 1).run();
+                } else {
+                    // Si no hay nueva password, primero intentamos UPDATE. 
+                    // Si no existe, INSERT con una flag o simplemente intentar SELECT y luego INSERT.
+                    // Pero INSERT OR REPLACE requiere todos los campos. 
+                    // Como no tenemos el hash actual aquí (y no queremos resetearlo), 
+                    // haremos un truco: UPDATE y si rowsAffected es 0, omitimos o buscamos el hash previo.
+                    const upd = await db.prepare(
+                        'UPDATE system_users SET nombre = ?, rol = ?, activo = ? WHERE username = ?'
+                    ).bind(nombre, rol, activo !== undefined ? activo : 1, usernameToUse).run();
+
+                    if (upd.success && upd.meta.changes === 0) {
+                        // El usuario no existe en esta DB. Necesitamos el hash para el INSERT.
+                        // Lo buscamos en la DB principal (o en cualquiera donde sí esté).
+                        const existing = await c.env.DB.prepare('SELECT password_hash FROM system_users WHERE username = ?').bind(usernameToUse).first();
+                        if (existing) {
+                            return db.prepare(
+                                'INSERT INTO system_users (username, nombre, password_hash, rol, activo) VALUES (?, ?, ?, ?, ?)'
+                            ).bind(usernameToUse, nombre, existing.password_hash, rol, activo !== undefined ? activo : 1).run();
+                        }
+                    }
+                    return upd;
+                }
+            } else {
+                // Eliminar de esta base de datos si no está seleccionada
+                return db.prepare('DELETE FROM system_users WHERE username = ?').bind(usernameToUse).run();
+            }
+        });
+
+        await Promise.all(syncPromises);
         return c.json({ success: true });
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 400);
@@ -892,8 +1145,17 @@ app.put('/system-users/:id', async (c) => {
 // Eliminar cuenta del sistema
 app.delete('/system-users/:id', async (c) => {
     try {
-        const id = c.req.param('id');
-        await getDB(c).prepare('DELETE FROM system_users WHERE id = ?').bind(id).run();
+        const idOrUsername = c.req.param('id');
+        const isNumericId = /^\d+$/.test(idOrUsername);
+        const usernameToUse = idOrUsername.toLowerCase().trim();
+
+        const dbs = [c.env.DB, c.env.DB_JUSTICIA, c.env.DB_PRESIDENCIA];
+
+        await Promise.all(dbs.map(db =>
+            db.prepare(`UPDATE system_users SET activo = 0 WHERE ${isNumericId ? 'id' : 'username'} = ?`)
+                .bind(isNumericId ? parseInt(idOrUsername) : usernameToUse).run()
+        ));
+
         return c.json({ success: true });
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 500);

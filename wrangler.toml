@@ -23,3 +23,7 @@ binding = "DB_PRESIDENCIA" # Este nombre debe ser exacto
 database_name = "db_presidencia_activos"
 database_id = "7447ca5c-b339-468d-83ca-25d4042eb01c"
 migrations_dir = "sql"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "8365215413964d27a8d8eb19e9880449"

@@ -16,7 +16,7 @@ const getRowBorder = (inst) => {
     return cfg ? cfg.border : '';
 };
 
-const UsuariosView = ({ authFetch = fetch }) => {
+const UsuariosView = ({ authFetch = fetch, currentUser }) => {
     const [usuarios, setUsuarios] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('');
@@ -80,9 +80,10 @@ const UsuariosView = ({ authFetch = fetch }) => {
                 method,
                 headers: {
                     'Content-Type': 'application/json',
-                    'x-admin-password': password
+                    'x-admin-password': password,
+                    'x-target-institution': editingUser?.institucion
                 },
-                body: JSON.stringify(formData)
+                body: JSON.stringify({ ...formData, registrado_por: editingUser ? editingUser.registrado_por : currentUser?.nombre })
             });
             if (res.ok) {
                 setShowModal(false);
@@ -169,16 +170,16 @@ const UsuariosView = ({ authFetch = fetch }) => {
 
                 {/* Tabla desktop */}
                 <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                    <div className="hidden md:block overflow-x-auto">
+                    <div className="hidden md:block overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar">
                         <table className="w-full text-left border-collapse">
-                            <thead>
+                            <thead className="sticky top-0 z-20">
                                 <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500 font-bold">
-                                    <th className="px-4 py-3">Nombre</th>
-                                    <th className="px-4 py-3">CI</th>
-                                    <th className="px-4 py-3">Cargo</th>
-                                    <th className="px-4 py-3">Unidad</th>
-                                    <th className="px-4 py-3">Ubic.</th>
-                                    <th className="px-4 py-3 text-right">Acción</th>
+                                    <th className="px-4 py-3 bg-slate-50">Nombre</th>
+                                    <th className="px-4 py-3 bg-slate-50 text-center">CI</th>
+                                    <th className="px-4 py-3 bg-slate-50">Cargo/Unidad</th>
+                                    <th className="px-4 py-3 bg-slate-50">Ubic.</th>
+                                    <th className="px-4 py-3 bg-slate-50">Registrado por</th>
+                                    <th className="px-4 py-3 bg-slate-50 text-right">Acción</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
@@ -204,10 +205,21 @@ const UsuariosView = ({ authFetch = fetch }) => {
                                         <td className="px-4 py-2.5">
                                             <span className="font-mono text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold">{u.ci}</span>
                                         </td>
-                                        <td className="px-4 py-2.5 text-slate-600 text-xs font-medium">{u.cargo || '—'}</td>
-                                        <td className="px-4 py-2.5 text-slate-500 text-xs">{u.unidad || '—'}</td>
+                                        <td className="px-4 py-2.5 text-slate-600 text-xs font-medium">
+                                            <div className="font-bold">{u.cargo || '—'}</div>
+                                            <div className="text-[10px] text-slate-400">{u.unidad || '—'}</div>
+                                        </td>
                                         <td className="px-4 py-2.5 text-xs text-slate-400">
                                             {u.oficina ? `${u.oficina} P${u.piso}` : '—'}
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                            {u.registrado_por ? (
+                                                <span className="text-[10px] font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full border border-violet-100 uppercase">
+                                                    {u.registrado_por}
+                                                </span>
+                                            ) : (
+                                                <span className="text-slate-300">—</span>
+                                            )}
                                         </td>
                                         <td className="px-4 py-2.5 text-right">
                                             <button

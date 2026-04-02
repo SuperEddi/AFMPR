@@ -22,7 +22,7 @@ const AuthView = ({ onLogin }) => {
             if (!res.ok) {
                 setError(data.error || 'Credenciales incorrectas.');
             } else {
-                onLogin(data.user);
+                onLogin(data);
             }
         } catch {
             setError('Error de conexión. Intente nuevamente.');
@@ -42,8 +42,8 @@ const AuthView = ({ onLogin }) => {
             <div className="relative w-full max-w-sm">
                 {/* Logo / Brand */}
                 <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl shadow-2xl shadow-blue-600/40 mb-4">
-                        <ShieldCheck size={32} className="text-white" />
+                    <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-2xl shadow-white/10 mb-4 p-2 overflow-hidden">
+                        <img src="/logoEscudo.png" alt="Logo" className="w-full h-full object-contain" />
                     </div>
                     <h1 className="text-2xl font-black text-white">Activos Presidencia</h1>
                     <p className="text-blue-300 text-sm font-medium mt-1">Sistema de Control de Activos</p>

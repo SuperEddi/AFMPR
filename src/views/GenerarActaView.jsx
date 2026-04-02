@@ -78,7 +78,7 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="font-mono font-bold text-xs text-slate-800">{a.codigo_activo}</div>
-                                    <div className="text-[10px] text-slate-400 truncate">{a.descripcion}</div>
+                                    <div className="text-[10px] text-slate-400 leading-relaxed font-medium">{a.descripcion}</div>
                                 </div>
                             </div>
 
@@ -218,7 +218,9 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
             }
             // En Devolución CONSOLIDADA (sin ubicación específica): fetch al API
             if (tipo === 'Devolución' && selectedUser) {
-                authFetch(`/api/activos/usuario/${selectedUser.id}`)
+                authFetch(`/api/activos/usuario/${selectedUser.id}`, {
+                    headers: { 'x-target-institution': selectedUser.institucion }
+                })
                     .then(r => r.json())
                     .then(d => { setActivosList(Array.isArray(d) ? d : []); setLoading(false); })
                     .catch(() => { setLoading(false); });
@@ -307,7 +309,6 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
             for (const item of batch) {
                 const res = await authFetch('/api/actas', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         tipo_acta: item.tipo_acta,
                         usuario_id: item.usuario_id,
@@ -317,8 +318,13 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                         oficina: selectedUser?.oficina,
                         piso: selectedUser?.piso,
                         appendToActaId: item.appendId,
-                        realizado_por: currentUser?.nombre
-                    })
+                        realizado_por: currentUser?.nombre,
+                        institucion: selectedUser?.institucion
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-target-institution': selectedUser?.institucion
+                    }
                 });
 
                 const result = await res.json();
@@ -676,7 +682,17 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                                                 {persona.nombre_completo.charAt(0).toUpperCase()}
                                                             </div>
                                                             <div className="flex-1 min-w-0">
-                                                                <div className="font-bold text-slate-900 text-xs truncate uppercase">{persona.nombre_completo}</div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="font-bold text-slate-900 text-xs truncate uppercase">{persona.nombre_completo}</div>
+                                                                    {persona.institucion && (
+                                                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${persona.institucion === 'TIERRAS' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                                            persona.institucion === 'JUSTICIA' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                                                                                'bg-blue-50 text-blue-600 border-blue-100'
+                                                                            }`}>
+                                                                            {persona.institucion}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                                 <div className="text-[10px] text-slate-400 font-bold">{persona.cargo} · CI: {persona.ci}</div>
                                                             </div>
                                                             <div className="flex items-center gap-2">
@@ -728,7 +744,20 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                         {filteredUsers.map(u => (
                                             <div key={u.id} onClick={() => { setSelectedUser(u); setStep(2); }} className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-slate-50 ${selectedUser?.id === u.id ? 'bg-slate-50' : ''}`}>
                                                 <div className="w-8 h-8 bg-slate-200 rounded-lg flex items-center justify-center font-bold text-slate-500 uppercase">{u.nombre_completo.charAt(0)}</div>
-                                                <div className="flex-1 min-w-0"><div className="font-bold text-slate-800 text-sm truncate">{u.nombre_completo}</div><div className="text-[10px] text-slate-400 uppercase font-bold">{u.cargo} | CI: {u.ci}</div></div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="font-bold text-slate-800 text-sm truncate uppercase">{u.nombre_completo}</div>
+                                                        {u.institucion && (
+                                                            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${u.institucion === 'TIERRAS' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                                u.institucion === 'JUSTICIA' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                                                                    'bg-blue-50 text-blue-600 border-blue-100'
+                                                                }`}>
+                                                                {u.institucion}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-[10px] text-slate-400 uppercase font-bold">{u.cargo} | CI: {u.ci}</div>
+                                                </div>
                                                 <ChevronRight size={14} className="text-slate-300" />
                                             </div>
                                         ))}
@@ -866,21 +895,58 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                         </div>
                                         {showSuggestions && searchTerm.length > 0 && (
                                             <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-100 z-50 divide-y divide-slate-50 overflow-hidden max-h-60 overflow-y-auto">
-                                                {suggestions.map(a => <button key={a.id} onClick={() => addActivo(a)} className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center justify-between transition-colors"><div><div className="font-black text-xs font-mono">{a.codigo_activo}</div><div className="text-[10px] text-slate-500 truncate">{a.descripcion}</div></div><ChevronRight size={14} /></button>)}
+                                                {suggestions.map(a => (
+                                                    <button key={a.id} onClick={() => addActivo(a)} className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center justify-between transition-colors">
+                                                        <div>
+                                                            <div className="flex items-center gap-2 font-black text-xs font-mono lowercase">
+                                                                <span className="uppercase">{a.codigo_activo}</span>
+                                                                {a.institucion && (
+                                                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${a.institucion === 'TIERRAS' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                                        a.institucion === 'JUSTICIA' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                                                                            'bg-blue-50 text-blue-600 border-blue-100'
+                                                                        }`}>
+                                                                        {a.institucion}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-500 leading-relaxed">{a.descripcion}</div>
+                                                        </div>
+                                                        <ChevronRight size={14} />
+                                                    </button>
+                                                ))}
                                             </div>
                                         )}
                                     </div>
-                                    <div className="border border-slate-100 rounded-xl divide-y divide-slate-50">
-                                        {activosSeleccionados.map(a => (
-                                            <div key={a.id} className="p-3 flex items-center justify-between gap-3">
-                                                <div className="min-w-0"><div className="font-mono font-bold text-xs">{a.codigo_activo}</div><div className="text-[10px] text-slate-400 truncate">{a.descripcion}</div></div>
-                                                <div className="flex items-center gap-2">
-                                                    {['Bueno', 'Regular', 'Malo'].map(e => <button key={e} onClick={() => setActivosSeleccionados(prev => prev.map(x => x.id === a.id ? { ...x, estado_fisico: e } : x))} className={`px-2 py-1 rounded text-[9px] font-bold ${a.estado_fisico === e ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-400'}`}>{e}</button>)}
-                                                    <button onClick={() => setActivosSeleccionados(prev => prev.filter(x => x.id !== a.id))} className="text-slate-300 hover:text-red-500"><Trash2 size={16} /></button>
+                                    <div className="border border-slate-100 rounded-xl overflow-hidden">
+                                        <div className="sticky top-0 z-20 bg-slate-50 border-b border-slate-100 px-3 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest flex justify-between">
+                                            <span>Activos Seleccionados</span>
+                                            <span>{activosSeleccionados.length} Items</span>
+                                        </div>
+                                        <div className="divide-y divide-slate-50 max-h-[400px] overflow-y-auto custom-scrollbar">
+                                            {activosSeleccionados.map(a => (
+                                                <div key={a.id} className="p-3 flex items-center justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-2 font-mono font-bold text-xs lowercase">
+                                                            <span className="uppercase">{a.codigo_activo}</span>
+                                                            {a.institucion && (
+                                                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${a.institucion === 'TIERRAS' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                                    a.institucion === 'JUSTICIA' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                                                                        'bg-blue-50 text-blue-600 border-blue-100'
+                                                                    }`}>
+                                                                    {a.institucion}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-400 leading-relaxed">{a.descripcion}</div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        {['Bueno', 'Regular', 'Malo'].map(e => <button key={e} onClick={() => setActivosSeleccionados(prev => prev.map(x => x.id === a.id ? { ...x, estado_fisico: e } : x))} className={`px-2 py-1 rounded text-[9px] font-bold ${a.estado_fisico === e ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-400'}`}>{e}</button>)}
+                                                        <button onClick={() => setActivosSeleccionados(prev => prev.filter(x => x.id !== a.id))} className="text-slate-300 hover:text-red-500"><Trash2 size={16} /></button>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
-                                        {activosSeleccionados.length === 0 && <div className="p-8 text-center text-slate-400 text-xs italic">Agregue activos para el acta</div>}
+                                            ))}
+                                            {activosSeleccionados.length === 0 && <div className="p-8 text-center text-slate-400 text-xs italic">Agregue activos para el acta</div>}
+                                        </div>
                                     </div>
                                 </div>
                             ) : (
