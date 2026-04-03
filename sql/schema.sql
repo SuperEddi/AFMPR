@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS auditorias_fisicas (
     usuario_auditado_id INTEGER NOT NULL,
     activo_id INTEGER NOT NULL,
     hallazgo TEXT CHECK(hallazgo IN ('Correcto', 'Sobrante', 'Ajeno')) NOT NULL,
+    realizado_por TEXT,
+    observacion TEXT,
     fecha_auditoria DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (usuario_auditado_id) REFERENCES usuarios(id),
     FOREIGN KEY (activo_id) REFERENCES activos(id)

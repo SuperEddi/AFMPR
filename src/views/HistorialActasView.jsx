@@ -522,6 +522,11 @@ const HistorialActasView = ({ authFetch = fetch }) => {
                                                                                     Acta #{ubic.acta_numero}
                                                                                 </span>
                                                                             )}
+                                                                            {ubic.institucion && (
+                                                                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter ${getInstitutionStyle(ubic.institucion)}`}>
+                                                                                    {ubic.institucion}
+                                                                                </span>
+                                                                            )}
                                                                         </div>
                                                                         <div className="text-[10px] text-slate-400 flex flex-wrap items-center gap-1 mt-0.5">
                                                                             <span>{ubic.unidad || 'Unidad No Definida'}</span>
@@ -587,6 +592,11 @@ const HistorialActasView = ({ authFetch = fetch }) => {
                                                                                             {acta.tipo_acta}
                                                                                         </span>
                                                                                         <span className="text-[10px] font-mono font-bold text-slate-300">#{String(acta.id).padStart(5, '0')}</span>
+                                                                                        {acta.institucion && (
+                                                                                            <span className={`text-[7px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter ${getInstitutionStyle(acta.institucion)}`}>
+                                                                                                {acta.institucion}
+                                                                                            </span>
+                                                                                        )}
                                                                                     </div>
                                                                                     <div className="text-[10px] font-black text-slate-700 mt-0.5">
                                                                                         {dia} <span className="text-slate-300 mx-1">·</span> {hora}
@@ -627,6 +637,11 @@ const HistorialActasView = ({ authFetch = fetch }) => {
                                         <h3 className="font-black text-slate-800 text-sm sm:text-lg uppercase tracking-tight">Detalle de Activos Asignados</h3>
                                         <div className="flex flex-wrap items-center gap-2 mt-1">
                                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{activeViewData.ubicacion.oficina}</span>
+                                            {activeViewData.ubicacion.institucion && (
+                                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter ${getInstitutionStyle(activeViewData.ubicacion.institucion)}`}>
+                                                    {activeViewData.ubicacion.institucion}
+                                                </span>
+                                            )}
                                             <span className="text-slate-200">·</span>
                                             <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{activeViewData.persona.nombre_completo}</span>
                                         </div>
@@ -794,80 +809,82 @@ const HistorialActasView = ({ authFetch = fetch }) => {
                         </div>
                     )
                 )}
-            </div>
+            </div >
             <AppDialog {...dialogProps} />
 
             {/* Modal Editar Activo */}
-            {editingAsset && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
-                        <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-blue-100 text-blue-600 rounded-xl">
-                                    <Pencil size={18} />
+            {
+                editingAsset && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+                        <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
+                            <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-blue-100 text-blue-600 rounded-xl">
+                                        <Pencil size={18} />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-black text-slate-900 text-sm">Editar Detalles del Activo</h3>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{editingAsset.codigo_activo}</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="font-black text-slate-900 text-sm">Editar Detalles del Activo</h3>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{editingAsset.codigo_activo}</p>
-                                </div>
-                            </div>
-                            <button onClick={() => setEditingAsset(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                                <AlertCircle size={20} className="rotate-45" />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleSaveEditAsset} className="p-6 space-y-4">
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block flex items-center gap-1.5"><Package size={12} /> Descripción</label>
-                                <textarea
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
-                                    rows="3"
-                                    value={editingAsset.descripcion}
-                                    onChange={e => setEditingAsset(prev => ({ ...prev, descripcion: e.target.value }))}
-                                    required
-                                />
+                                <button onClick={() => setEditingAsset(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                                    <AlertCircle size={20} className="rotate-45" />
+                                </button>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <form onSubmit={handleSaveEditAsset} className="p-6 space-y-4">
                                 <div>
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block flex items-center gap-1.5"><Hash size={12} /> Serie</label>
-                                    <input
-                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20"
-                                        value={editingAsset.serie || ''}
-                                        onChange={e => setEditingAsset(prev => ({ ...prev, serie: e.target.value }))}
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block flex items-center gap-1.5"><Package size={12} /> Descripción</label>
+                                    <textarea
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+                                        rows="3"
+                                        value={editingAsset.descripcion}
+                                        onChange={e => setEditingAsset(prev => ({ ...prev, descripcion: e.target.value }))}
+                                        required
                                     />
                                 </div>
-                                <div>
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block flex items-center gap-1.5">Estado Físico</label>
-                                    <select
-                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20"
-                                        value={editingAsset.estado_fisico}
-                                        onChange={e => setEditingAsset(prev => ({ ...prev, estado_fisico: e.target.value }))}
-                                    >
-                                        <option value="Bueno">Bueno</option>
-                                        <option value="Regular">Regular</option>
-                                        <option value="Malo">Malo</option>
-                                    </select>
-                                </div>
-                            </div>
 
-                            <div className="pt-4 flex items-center justify-end gap-3">
-                                <button type="button" onClick={() => setEditingAsset(null)} className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors">
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={savingAsset}
-                                    className="px-6 py-2 bg-blue-600 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-500/20 active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2"
-                                >
-                                    {savingAsset ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-                                    {savingAsset ? 'Guardando...' : 'Guardar Cambios'}
-                                </button>
-                            </div>
-                        </form>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block flex items-center gap-1.5"><Hash size={12} /> Serie</label>
+                                        <input
+                                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20"
+                                            value={editingAsset.serie || ''}
+                                            onChange={e => setEditingAsset(prev => ({ ...prev, serie: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block flex items-center gap-1.5">Estado Físico</label>
+                                        <select
+                                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20"
+                                            value={editingAsset.estado_fisico}
+                                            onChange={e => setEditingAsset(prev => ({ ...prev, estado_fisico: e.target.value }))}
+                                        >
+                                            <option value="Bueno">Bueno</option>
+                                            <option value="Regular">Regular</option>
+                                            <option value="Malo">Malo</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="pt-4 flex items-center justify-end gap-3">
+                                    <button type="button" onClick={() => setEditingAsset(null)} className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors">
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={savingAsset}
+                                        className="px-6 py-2 bg-blue-600 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-500/20 active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        {savingAsset ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                                        {savingAsset ? 'Guardando...' : 'Guardar Cambios'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
         </>
     );
 };

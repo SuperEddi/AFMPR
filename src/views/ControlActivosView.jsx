@@ -314,7 +314,12 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
         });
         // Faltantes
         pending.forEach(a => {
-            rows.push(['✗ FALTANTE', a.codigo_activo, a.descripcion || '', a.serie || '', a.estado_actual || '', '', assetObservations[a.id] || '']);
+            rows.push(['✗ FALTANTE', a.codigo_activo, a.descripcion || '', a.serie || '', a.estado_actual || '', '', '']);
+            if (assetObservations[a.id]) {
+                rows.push(['', '', `MOTIVO/OBS: ${assetObservations[a.id]}`, '', '', '', '']);
+            } else {
+                rows.push(['', '', 'SIN OBSERVACIÓN / PENDIENTE', '', '', '', '']);
+            }
         });
         // Sobrantes / Ajenos
         surplusActivos.forEach(a => {
@@ -452,8 +457,15 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                 doc.text('ACTIVOS FALTANTES (NO DETECTADOS):', ML, y);
                 autoTable(doc, {
                     startY: y + 2, margin: { left: ML, right: MR, bottom: MB + 10 }, tableWidth: contentW,
-                    head: [['CÓDIGO', 'DESCRIPCIÓN', 'OBSERVACIÓN']],
-                    body: pending.map(a => [a.codigo_activo, a.descripcion, assetObservations[a.id] || 'NO LOCALIZADO']),
+                    head: [['CÓDIGO', 'DESCRIPCIÓN', 'ESTADO/MOTIVO']],
+                    body: pending.flatMap(a => [
+                        [a.codigo_activo, a.descripcion, 'FALTANTE'],
+                        [{
+                            content: `OBSERVACIÓN: ${assetObservations[a.id] || 'NO LOCALIZADO / SIN JUSTIFICACIÓN'}`,
+                            colSpan: 3,
+                            styles: { fontStyle: 'italic', textColor: [150, 0, 0], fillColor: [255, 250, 250] }
+                        }]
+                    ]),
                     theme: 'grid',
                     headStyles: { fillColor: [255, 240, 240], textColor: [150, 0, 0], fontSize: 8 },
                     bodyStyles: { fontSize: 7, textColor: [0, 0, 0] },

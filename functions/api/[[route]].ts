@@ -433,6 +433,7 @@ app.get('/activos/agrupados', async (c) => {
                     unidad: unidad,
                     oficina: oficina,
                     piso: piso,
+                    institucion: row.institucion,
                     acta_id: row.last_acta_id || null,
                     acta_numero: row.last_acta_id ? String(row.last_acta_id).padStart(5, '0') : null,
                     observaciones: row.observaciones || null,
@@ -791,10 +792,19 @@ app.get('/auditorias/usuario/:id', async (c) => {
         else if (inst === 'presidencia') db = c.env.DB_PRESIDENCIA;
         else db = c.env.DB;
 
-        const { results } = await db.prepare(
-            'SELECT activo_id, hallazgo, fecha_auditoria, observacion FROM auditorias_fisicas WHERE usuario_auditado_id = ?'
-        ).bind(userId).all();
-        return c.json(results || []);
+        // Intentamos con todos los campos (incluyendo el nuevo 'observacion')
+        try {
+            const { results } = await db.prepare(
+                'SELECT activo_id, hallazgo, fecha_auditoria, observacion FROM auditorias_fisicas WHERE usuario_auditado_id = ?'
+            ).bind(userId).all();
+            return c.json(results || []);
+        } catch (innerErr: any) {
+            // Si falla por columna faltante, devolvemos la versión básica
+            const { results } = await db.prepare(
+                'SELECT activo_id, hallazgo, fecha_auditoria FROM auditorias_fisicas WHERE usuario_auditado_id = ?'
+            ).bind(userId).all();
+            return c.json(results || []);
+        }
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 500);
     }
@@ -812,9 +822,17 @@ app.post('/auditorias', async (c) => {
         else if (inst === 'presidencia') db = c.env.DB_PRESIDENCIA;
         else db = c.env.DB;
 
-        await db.prepare(
-            'INSERT INTO auditorias_fisicas (usuario_auditado_id, activo_id, hallazgo, realizado_por, observacion) VALUES (?, ?, ?, ?, ?)'
-        ).bind(usuario_auditado_id, activo_id, hallazgo, realizado_por ?? null, observacion ?? null).run();
+        try {
+            // Intento completo
+            await db.prepare(
+                'INSERT INTO auditorias_fisicas (usuario_auditado_id, activo_id, hallazgo, realizado_por, observacion) VALUES (?, ?, ?, ?, ?)'
+            ).bind(usuario_auditado_id, activo_id, hallazgo, realizado_por ?? null, observacion ?? null).run();
+        } catch (innerErr) {
+            // Fallback (sin columnas nuevas)
+            await db.prepare(
+                'INSERT INTO auditorias_fisicas (usuario_auditado_id, activo_id, hallazgo) VALUES (?, ?, ?)'
+            ).bind(usuario_auditado_id, activo_id, hallazgo).run();
+        }
         return c.json({ success: true });
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 400);
