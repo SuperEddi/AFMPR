@@ -5,7 +5,9 @@ import { AppDialog, useDialog } from '../components/AppDialog';
 const INST_CONFIG = {
     TIERRAS: { pill: 'bg-emerald-600 text-white', border: 'border-l-4 border-l-emerald-400', rowBg: '' },
     JUSTICIA: { pill: 'bg-blue-600 text-white', border: 'border-l-4 border-l-blue-500', rowBg: '' },
-    PRESIDENCIA: { pill: 'bg-slate-800 text-white', border: 'border-l-4 border-l-slate-500', rowBg: '' },
+    PRESIDENCIA: { pill: 'bg-amber-600 text-white', border: 'border-l-4 border-l-amber-500', rowBg: '' },
+    CULTURAS: { pill: 'bg-indigo-600 text-white', border: 'border-l-4 border-l-indigo-500', rowBg: '' },
+    VICEPRESIDENCIA: { pill: 'bg-rose-600 text-white', border: 'border-l-4 border-l-rose-500', rowBg: '' },
 };
 const getInstitutionStyle = (inst) => {
     const cfg = INST_CONFIG[(inst || '').toUpperCase()];
@@ -18,15 +20,28 @@ const getRowBorder = (inst) => {
 
 const UsuariosView = ({ authFetch = fetch, currentUser }) => {
     const [usuarios, setUsuarios] = useState([]);
+    const [catalogos, setCatalogos] = useState({ ubicaciones: [], unidades: [], oficinas: [], pisos: [] });
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [editingUser, setEditingUser] = useState(null);
     const [saving, setSaving] = useState(false);
     const [formData, setFormData] = useState({
-        nombre_completo: '', ci: '', cargo: '', unidad: '', oficina: '', piso: ''
+        nombre_completo: '', ci: '', cargo: '', ubicacion_fisica_id: '', cat_unidad_id: '', oficinas_ids: []
     });
     const { showAlert, dialogProps } = useDialog();
+
+    const fetchCatalogos = useCallback(async () => {
+        try {
+            const res = await authFetch('/api/catalogos');
+            if (res.ok) {
+                const data = await res.json();
+                setCatalogos(data);
+            }
+        } catch (err) {
+            console.error("Error fetching catalogos:", err);
+        }
+    }, [authFetch]);
 
     const fetchUsuarios = useCallback(async (silent = false) => {
         if (!silent) setLoading(true);
@@ -41,36 +56,61 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
         setLoading(false);
     }, [authFetch]);
 
-    // Carga inicial y cuando cambia la institución (authFetch cambia)
+    // Carga inicial y cuando cambia la institución
     useEffect(() => {
-        setUsuarios([]);   // Limpia lista inmediatamente al cambiar de institución
-        setFilter('');     // Resetea la búsqueda
+        setUsuarios([]);
+        setFilter('');
+        fetchCatalogos();
         fetchUsuarios(false);
-    }, [fetchUsuarios]);
+    }, [fetchUsuarios, fetchCatalogos]);
 
     useEffect(() => {
         const handler = () => {
-            setUsuarios([]);
-            setFilter('');
-            fetchUsuarios(false);
+            fetchCatalogos();
+            fetchUsuarios(true);
         };
         window.addEventListener('data-updated', handler);
         return () => window.removeEventListener('data-updated', handler);
-    }, [fetchUsuarios]);
+    }, [fetchUsuarios, fetchCatalogos]);
 
     const handleInputChange = e => setFormData(p => ({ ...p, [e.target.name]: e.target.value }));
 
+    const handleOfficeChange = (officeId) => {
+        setFormData(p => {
+            const current = p.oficinas_ids || [];
+            if (current.includes(officeId)) {
+                return { ...p, oficinas_ids: current.filter(id => id !== officeId) };
+            } else {
+                return { ...p, oficinas_ids: [...current, officeId] };
+            }
+        });
+    };
+
     const openModal = (user = null) => {
         setEditingUser(user);
-        setFormData(user || { nombre_completo: '', ci: '', cargo: '', unidad: '', oficina: '', piso: '' });
+        if (user) {
+            setFormData({
+                nombre_completo: user.nombre_completo,
+                ci: user.ci,
+                cargo: user.cargo,
+                ubicacion_fisica_id: user.ubicacion_fisica_id || '',
+                cat_unidad_id: user.cat_unidad_id || '',
+                oficinas_ids: user.oficinas_ids || []
+            });
+        } else {
+            setFormData({ nombre_completo: '', ci: '', cargo: '', ubicacion_fisica_id: '', cat_unidad_id: '', oficinas_ids: [] });
+        }
         setShowModal(true);
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        const password = prompt("Ingrese la contraseña de administrador para confirmar:");
-        if (!password) return;
+        // Si ya tenemos la adminPassword en el contexto (inyectada por App.jsx vía authFetch),
+        // no necesitamos pedirla de nuevo por prompt.
+        // Pero UsuariosView no recibe 'adminPassword' como prop explícita, la usa authFetch.
+        // Verificaremos si authFetch funciona o si falló con 401.
+
 
         setSaving(true);
         try {
@@ -80,7 +120,6 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                 method,
                 headers: {
                     'Content-Type': 'application/json',
-                    'x-admin-password': password,
                     'x-target-institution': editingUser?.institucion
                 },
                 body: JSON.stringify({ ...formData, registrado_por: editingUser ? editingUser.registrado_por : currentUser?.nombre })
@@ -90,7 +129,10 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                 fetchUsuarios();
             } else {
                 const data = await res.json();
-                await showAlert(data.error || 'No se pudo guardar el usuario.', { title: 'Error al guardar', type: 'error' });
+                await showAlert(data.message || data.error || 'No se pudo guardar el usuario.', {
+                    title: data.error || 'Error al guardar',
+                    type: 'error'
+                });
             }
         } catch (e) {
             await showAlert('Error al guardar el usuario.', { title: 'Error de red', type: 'error' });
@@ -108,21 +150,15 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
             const ci = String(u.ci || '').toLowerCase();
             const cargo = (u.cargo || '').toLowerCase();
             const unidad = (u.unidad || '').toLowerCase();
+            const oficinas = (u.oficinas || '').toLowerCase();
             const inst = (u.institucion || '').toLowerCase();
-            const oficina = (u.oficina || '').toLowerCase();
-            const piso = String(u.piso || '').toLowerCase();
-            const pisoLabel = `p${piso}`; // Para que coincida con "P12", "P3", etc.
-            const ubic = `${oficina} ${pisoLabel}`.toLowerCase();
 
             return name.includes(term) ||
                 ci.includes(term) ||
                 cargo.includes(term) ||
                 unidad.includes(term) ||
                 inst.includes(term) ||
-                oficina.includes(term) ||
-                piso.includes(term) ||
-                pisoLabel.includes(term) ||
-                ubic.includes(term);
+                oficinas.includes(term);
         });
     }, [usuarios, filter]);
 
@@ -177,7 +213,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                                     <th className="px-4 py-3 bg-slate-50">Nombre</th>
                                     <th className="px-4 py-3 bg-slate-50 text-center">CI</th>
                                     <th className="px-4 py-3 bg-slate-50">Cargo/Unidad</th>
-                                    <th className="px-4 py-3 bg-slate-50">Ubic.</th>
+                                    <th className="px-4 py-3 bg-slate-50">Oficinas Asignadas</th>
                                     <th className="px-4 py-3 bg-slate-50">Registrado por</th>
                                     <th className="px-4 py-3 bg-slate-50 text-right">Acción</th>
                                 </tr>
@@ -207,10 +243,14 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                                         </td>
                                         <td className="px-4 py-2.5 text-slate-600 text-xs font-medium">
                                             <div className="font-bold">{u.cargo || '—'}</div>
-                                            <div className="text-[10px] text-slate-400">{u.unidad || '—'}</div>
+                                            <div className="text-[10px] text-slate-400">
+                                                {u.edificio ? <span className="font-black text-indigo-500 uppercase">{u.edificio}</span> : ''}
+                                                {u.edificio && u.unidad ? ' · ' : ''}
+                                                {u.unidad || '—'}
+                                            </div>
                                         </td>
-                                        <td className="px-4 py-2.5 text-xs text-slate-400">
-                                            {u.oficina ? `${u.oficina} P${u.piso}` : '—'}
+                                        <td className="px-4 py-2.5 text-xs text-slate-500 italic max-w-[200px] truncate">
+                                            {u.oficinas || '—'}
                                         </td>
                                         <td className="px-4 py-2.5">
                                             {u.registrado_por ? (
@@ -286,7 +326,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                                     <X size={20} />
                                 </button>
                             </div>
-                            <form onSubmit={handleSubmit} className="p-4 space-y-3">
+                            <form onSubmit={handleSubmit} className="p-4 space-y-4">
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
                                         <UserPlus size={11} /> Nombre Completo
@@ -317,33 +357,46 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                                         />
                                     </div>
                                 </div>
+
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
-                                        <Building size={11} /> Unidad / Departamento
+                                        <Building size={11} /> Unidad (Catálogo)
                                     </label>
-                                    <input name="unidad"
+                                    <select name="cat_unidad_id" required
                                         className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
-                                        value={formData.unidad || ''} onChange={handleInputChange}
-                                    />
+                                        value={formData.cat_unidad_id || ''} onChange={handleInputChange}
+                                    >
+                                        <option value="">Seleccione Unidad...</option>
+                                        {catalogos.unidades
+                                            .filter(u => !formData.ubicacion_fisica_id || u.ubicacion_fisica_id === Number(formData.ubicacion_fisica_id))
+                                            .map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                                    </select>
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
-                                            <MapPin size={11} /> Oficina
-                                        </label>
-                                        <input name="oficina"
-                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
-                                            value={formData.oficina || ''} onChange={handleInputChange}
-                                        />
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
+                                        <MapPin size={11} /> Oficinas Asignadas (Multiselección)
+                                    </label>
+                                    <div className="max-h-40 overflow-y-auto border border-slate-100 rounded-lg p-2 bg-slate-50 space-y-1 custom-scrollbar text-left">
+                                        {catalogos.oficinas
+                                            .filter(o => !formData.cat_unidad_id || o.unidad_id === Number(formData.cat_unidad_id))
+                                            .map(o => (
+                                                <label key={o.id} className="flex items-center gap-2 p-1.5 hover:bg-white rounded cursor-pointer transition-colors">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={(formData.oficinas_ids || []).includes(o.id)}
+                                                        onChange={() => handleOfficeChange(o.id)}
+                                                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                    <span className="text-xs font-semibold text-slate-700">{o.nombre}</span>
+                                                </label>
+                                            ))
+                                        }
+                                        {catalogos.oficinas.length === 0 && <div className="text-center text-[10px] py-4 text-slate-400">No hay oficinas disponibles</div>}
                                     </div>
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Piso</label>
-                                        <input name="piso"
-                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
-                                            value={formData.piso || ''} onChange={handleInputChange}
-                                        />
-                                    </div>
+                                    <p className="text-[9px] text-slate-400 mt-1 italic leading-tight">* Solo se muestran oficinas de la unidad seleccionada (o todas si no hay filtro).</p>
                                 </div>
+
                                 <div className="flex gap-2 pt-2">
                                     <button type="button" onClick={() => setShowModal(false)}
                                         className="flex-1 py-2.5 border border-slate-200 text-slate-400 rounded-lg font-bold text-sm hover:bg-slate-50 transition-all">

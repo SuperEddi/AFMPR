@@ -6,6 +6,8 @@ type Bindings = {
     DB: D1Database;          // Default (Tierras)
     DB_JUSTICIA: D1Database; // Ministerio de Justicia
     DB_PRESIDENCIA: D1Database; // Presidencia
+    DB_CULTURAS?: D1Database;    // Culturas
+    DB_VICEPRESIDENCIA?: D1Database; // Vicepresidencia
     ADMIN_PASSWORD: string;   // Contraseña global
     CACHE: KVNamespace;       // KV Cache para CONSOLIDADO
 };
@@ -15,17 +17,20 @@ const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 // ─── MIDDLEWARES Y CONFIGURACIÓN ─────────────────────────────────────────────
 
 // Helper principal para obtener la DB correcta
-const getDB = (c: any): D1Database => {
-    // Si viene un target específico (por header), lo priorizamos (para CONSOLIDADO)
+const getDB = (c: any): D1Database | undefined => {
+    // Si viene un target específico (por header), lo priorizamos (para CONSOLIDADO o sincronización de usuarios)
     const target = c.req.header('x-target-institution');
     if (target) {
         const t = target.toLowerCase();
         if (t === 'justicia') return c.env.DB_JUSTICIA;
         if (t === 'presidencia') return c.env.DB_PRESIDENCIA;
-        return c.env.DB;
+        if (t === 'culturas') return c.env.DB_CULTURAS;
+        if (t === 'vicepresidencia') return c.env.DB_VICEPRESIDENCIA;
+        if (t === 'tierras') return c.env.DB;
+        return undefined; // No default if target is wrong
     }
     // Si no, usamos la DB asignada al contexto por el middleware de institución
-    return (c as any).db || c.env.DB;
+    return (c as any).db;
 };
 
 // 1. Middleware CORS
@@ -52,8 +57,17 @@ app.use('*', async (c, next) => {
         (c as any).db = c.env.DB_JUSTICIA;
     } else if (institution === 'presidencia') {
         (c as any).db = c.env.DB_PRESIDENCIA;
-    } else {
+    } else if (institution === 'culturas') {
+        (c as any).db = c.env.DB_CULTURAS;
+    } else if (institution === 'vicepresidencia') {
+        (c as any).db = c.env.DB_VICEPRESIDENCIA;
+    } else if (institution === 'tierras') {
         (c as any).db = c.env.DB;
+    } else if (institution === 'consolidado') {
+        // En modo consolidado no asignamos una única DB, pero no es un error
+        (c as any).db = 'CONSOLIDADO';
+    } else {
+        (c as any).db = undefined;
     }
     await next();
 });
@@ -69,8 +83,20 @@ app.use('*', async (c, next) => {
 
     if (isSensitive) {
         const providedPassword = c.req.header('x-admin-password');
-        if (providedPassword !== c.env.ADMIN_PASSWORD) {
-            return c.json({ error: 'Autorización administrativa requerida.' }, 401);
+        const expectedPassword = c.env.ADMIN_PASSWORD;
+
+        if (!expectedPassword) {
+            return c.json({
+                error: 'Error de configuración del servidor.',
+                message: 'La variable ADMIN_PASSWORD no está configurada en el entorno de Cloudflare.'
+            }, 500);
+        }
+
+        if (providedPassword !== expectedPassword) {
+            return c.json({
+                error: 'Autorización administrativa requerida.',
+                message: 'La clave maestra no coincide o no se ha proporcionado. Cierre sesión e intente ingresar nuevamente.'
+            }, 401);
         }
     }
     await next();
@@ -78,7 +104,8 @@ app.use('*', async (c, next) => {
 
 // 4. Helper para diagnóstico de vinculación
 app.use('*', async (c, next) => {
-    if (!getDB(c)) {
+    const isConsolidated = (c as any).db === 'CONSOLIDADO';
+    if (!isConsolidated && !getDB(c)) {
         return c.json({ error: "Configuración de Base de Datos (DB) no encontrada." }, 500);
     }
     await next();
@@ -137,95 +164,176 @@ async function invalidateConsolidadoCache(kv: KVNamespace | undefined) {
             kv.delete('consolidado:activos:Disponible'),
             kv.delete('consolidado:activos:Sobrante'),
             kv.delete('consolidado:usuarios'),
+            kv.delete('consolidado:catalogos'),
         ]);
     } catch { }
 }
 
-// ─── ENDPOINTS ───────────────────────────────────────────────────────────────
+// ─── CATALOGOS (NUEVO 4NF) ───────────────────────────────────────────────────
 
-// --- ESTADISTICAS ---
-app.get('/stats', async (c) => {
+app.get('/catalogos', async (c) => {
     try {
-        const institution = c.req.header('x-institution') || 'tierras';
+        let db: any = getDB(c);
 
-        const fetchDBStats = async (db: D1Database) => {
-            const s = await db.prepare(`
-                SELECT 
-                    COUNT(*) as total,
-                    COALESCE(SUM(CASE WHEN estado_actual = 'Asignado' THEN 1 ELSE 0 END), 0) as asignados,
-                    COALESCE(SUM(CASE WHEN estado_actual = 'Disponible' THEN 1 ELSE 0 END), 0) as disponibles,
-                    COALESCE(SUM(CASE WHEN estado_actual = 'Sobrante' THEN 1 ELSE 0 END), 0) as sobrantes
-                FROM activos
-            `).first();
-            return s || { total: 0, asignados: 0, disponibles: 0, sobrantes: 0 };
-        };
+        // Si estamos en modo consolidado, usamos la DB de Tierras para los catálogos base
+        if (db === 'CONSOLIDADO') db = c.env.DB;
 
-        if (institution === 'consolidado') {
-            const merged = await kvCache(c.env.CACHE, 'consolidado:stats', async () => {
-                const [s1, s2, s3] = await Promise.all([
-                    fetchDBStats(c.env.DB),
-                    fetchDBStats(c.env.DB_JUSTICIA),
-                    fetchDBStats(c.env.DB_PRESIDENCIA)
-                ]);
-                return {
-                    total: Number(s1.total) + Number(s2.total) + Number(s3.total),
-                    asignados: Number(s1.asignados) + Number(s2.asignados) + Number(s3.asignados),
-                    disponibles: Number(s1.disponibles) + Number(s2.disponibles) + Number(s3.disponibles),
-                    sobrantes: Number(s1.sobrantes) + Number(s2.sobrantes) + Number(s3.sobrantes),
-                    institucion: 'CONSOLIDADO'
-                };
-            }, 30); // TTL 30s para stats
-            return c.json(merged);
-        }
+        if (!db) return c.json({ unidades: [], oficinas: [], pisos: [], auxiliares: [], grupos: [] });
 
-        const stats = await fetchDBStats(getDB(c));
-        return c.json({ ...stats, institucion: institution.toUpperCase() });
+        const full = c.req.query('full') === 'true';
+        const where = full ? '' : ' WHERE activo = 1 ';
+
+        const [unidades, oficinas, pisos, auxiliares, grupos, ubicaciones] = await Promise.all([
+            db.prepare(`SELECT * FROM cat_unidades ${where} ORDER BY nombre`).all(),
+            db.prepare(`SELECT * FROM cat_oficinas ${where} ORDER BY nombre`).all(),
+            db.prepare(`SELECT * FROM cat_pisos ${where} ORDER BY numero`).all(),
+            db.prepare(`SELECT a.*, g.nombre as grupo_nombre FROM cat_auxiliares a LEFT JOIN cat_grupos_contables g ON a.cat_grupo_contable_id = g.id ${full ? '' : ' WHERE a.activo = 1 '} ORDER BY a.nombre`).all(),
+            db.prepare(`SELECT * FROM cat_grupos_contables ${where} ORDER BY nombre`).all(),
+            db.prepare(`SELECT * FROM ubicacion_fisica ${where} ORDER BY nombre`).all()
+        ]);
+        return c.json({
+            unidades: unidades.results || [],
+            oficinas: oficinas.results || [],
+            pisos: pisos.results || [],
+            auxiliares: auxiliares.results || [],
+            grupos: grupos.results || [],
+            ubicaciones: ubicaciones.results || []
+        });
     } catch (e: any) {
-        console.error("Error en query /stats:", e.message);
         return c.json({ error: formatError(e) }, 500);
     }
 });
 
-// --- USUARIOS ---
+// ─── ESTADÍSTICAS (DASHBOARD) ────────────────────────────────────────────────
 
-// --- USUARIOS ---
+app.get('/stats', async (c) => {
+    const institution = (c.req.header('x-institution') || 'tierras').toLowerCase();
+
+    const fetchStatsFromDB = async (db: D1Database) => {
+        try {
+            const [activos, sobrantes] = await Promise.all([
+                db.prepare(`
+                    SELECT
+                        COUNT(*) as total,
+                        SUM(CASE WHEN estado_actual = 'Asignado' THEN 1 ELSE 0 END) as asignados,
+                        SUM(CASE WHEN estado_actual = 'Disponible' THEN 1 ELSE 0 END) as disponibles,
+                        SUM(CASE WHEN estado_actual = 'Mantenimiento' THEN 1 ELSE 0 END) as mantenimiento
+                    FROM activos
+                `).first(),
+                db.prepare(`
+                    SELECT COUNT(DISTINCT activo_id) as sobrantes
+                    FROM auditorias_fisicas
+                    WHERE hallazgo = 'Sobrante'
+                `).first().catch(() => ({ sobrantes: 0 }))
+            ]);
+            return {
+                total: Number(activos?.total || 0),
+                asignados: Number(activos?.asignados || 0),
+                disponibles: Number(activos?.disponibles || 0),
+                mantenimiento: Number(activos?.mantenimiento || 0),
+                sobrantes: Number((sobrantes as any)?.sobrantes || 0),
+            };
+        } catch {
+            return { total: 0, asignados: 0, disponibles: 0, mantenimiento: 0, sobrantes: 0 };
+        }
+    };
+
+    try {
+        if (institution === 'consolidado') {
+            const fetchFn = async () => {
+                const [s1, s2, s3, s4, s5] = await Promise.all([
+                    fetchStatsFromDB(c.env.DB),
+                    fetchStatsFromDB(c.env.DB_JUSTICIA),
+                    fetchStatsFromDB(c.env.DB_PRESIDENCIA),
+                    c.env.DB_CULTURAS ? fetchStatsFromDB(c.env.DB_CULTURAS) : Promise.resolve({ total: 0, asignados: 0, disponibles: 0, mantenimiento: 0, sobrantes: 0 }),
+                    c.env.DB_VICEPRESIDENCIA ? fetchStatsFromDB(c.env.DB_VICEPRESIDENCIA) : Promise.resolve({ total: 0, asignados: 0, disponibles: 0, mantenimiento: 0, sobrantes: 0 }),
+                ]);
+                return {
+                    total: s1.total + s2.total + s3.total + s4.total + s5.total,
+                    asignados: s1.asignados + s2.asignados + s3.asignados + s4.asignados + s5.asignados,
+                    disponibles: s1.disponibles + s2.disponibles + s3.disponibles + s4.disponibles + s5.disponibles,
+                    mantenimiento: s1.mantenimiento + s2.mantenimiento + s3.mantenimiento + s4.mantenimiento + s5.mantenimiento,
+                    sobrantes: s1.sobrantes + s2.sobrantes + s3.sobrantes + s4.sobrantes + s5.sobrantes,
+                };
+            };
+            const data = await kvCache(c.env.CACHE, 'consolidado:stats', fetchFn, 30);
+            return c.json(data);
+        }
+
+        const db = getDB(c);
+        if (!db) return c.json({ total: 0, asignados: 0, disponibles: 0, mantenimiento: 0, sobrantes: 0 });
+
+        const stats = await fetchStatsFromDB(db);
+        return c.json(stats);
+    } catch (e: any) {
+        return c.json({ total: 0, asignados: 0, disponibles: 0, mantenimiento: 0, sobrantes: 0 });
+    }
+});
 
 app.get('/usuarios', async (c) => {
     const institution = c.req.header('x-institution') || 'tierras';
 
     const fetchDBUsuarios = async (db: D1Database, instName: string) => {
-        const { results } = await db.prepare('SELECT * FROM usuarios ORDER BY nombre_completo ASC').all();
+        const { results } = await db.prepare(`
+            SELECT u.id, u.nombre_completo, u.ci, u.cargo, u.fecha_registro,
+                   un.nombre as unidad, uf.nombre as edificio,
+                   (SELECT GROUP_CONCAT(off.nombre, ', ') 
+                    FROM usuarios_oficinas uo 
+                    JOIN cat_oficinas off ON uo.oficina_id = off.id 
+                    WHERE uo.usuario_id = u.id) as oficinas
+            FROM usuarios u
+            LEFT JOIN cat_unidades un ON u.cat_unidad_id = un.id
+            LEFT JOIN ubicacion_fisica uf ON u.ubicacion_fisica_id = uf.id
+            ORDER BY u.nombre_completo ASC
+        `).all();
         return results.map(r => ({ ...r, institucion: instName }));
     };
 
     if (institution === 'consolidado') {
         const result = await kvCache(c.env.CACHE, 'consolidado:usuarios', async () => {
-            const [r1, r2, r3] = await Promise.all([
+            const [r1, r2, r3, r4, r5] = await Promise.all([
                 fetchDBUsuarios(c.env.DB, 'TIERRAS'),
                 fetchDBUsuarios(c.env.DB_JUSTICIA, 'JUSTICIA'),
-                fetchDBUsuarios(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
+                fetchDBUsuarios(c.env.DB_PRESIDENCIA, 'PRESIDENCIA'),
+                c.env.DB_CULTURAS ? fetchDBUsuarios(c.env.DB_CULTURAS, 'CULTURAS') : Promise.resolve([]),
+                c.env.DB_VICEPRESIDENCIA ? fetchDBUsuarios(c.env.DB_VICEPRESIDENCIA, 'VICEPRESIDENCIA') : Promise.resolve([]),
             ]);
-            return [...r1, ...r2, ...r3];
+            return [...r1, ...r2, ...r3, ...r4, ...r5];
         }, 60);
         return c.json(result);
     }
 
-    const results = await fetchDBUsuarios(getDB(c), institution.toUpperCase());
+    const db = getDB(c);
+    if (!db) return c.json([]);
+
+    const results = await fetchDBUsuarios(db, institution.toUpperCase());
     return c.json(results);
 });
 
 app.post('/usuarios', async (c) => {
     const body = await c.req.json();
-    const { nombre_completo, ci, cargo, unidad, oficina, piso, registrado_por } = body;
+    const { nombre_completo, ci, cargo, cat_unidad_id, ubicacion_fisica_id, oficinas_ids, registrado_por } = body;
 
     try {
-        const result = await getDB(c).prepare(
-            'INSERT INTO usuarios (nombre_completo, ci, cargo, unidad, oficina, piso, registrado_por) VALUES (?, ?, ?, ?, ?, ?, ?)'
-        ).bind(nombre_completo ?? '', ci ?? '', cargo ?? null, unidad ?? null, oficina ?? null, piso ?? null, registrado_por ?? null).run();
+        let db: any = getDB(c);
+        if (db === 'CONSOLIDADO') return c.json({ error: 'Operación no permitida en modo consolidado. Seleccione una institución específica para registrar funcionarios.' }, 400);
+        if (!db) throw new Error('No se pudo identificar la base de datos destino.');
+        const result = await db.prepare(
+            'INSERT INTO usuarios (nombre_completo, ci, cargo, cat_unidad_id, ubicacion_fisica_id, registrado_por) VALUES (?, ?, ?, ?, ?, ?)'
+        ).bind(nombre_completo ?? '', ci ?? '', cargo ?? null, cat_unidad_id ?? null, ubicacion_fisica_id ?? null, registrado_por ?? null).run();
 
-        const newUser = { id: result.meta.last_row_id, nombre_completo, ci, cargo, unidad, oficina, piso, registrado_por };
+        const userId = result.meta.last_row_id;
+
+        // Insertar múltiples oficinas en la tabla intermedia
+        if (oficinas_ids && Array.isArray(oficinas_ids)) {
+            const officeStatements = oficinas_ids.map(oid =>
+                db.prepare('INSERT OR IGNORE INTO usuarios_oficinas (usuario_id, oficina_id) VALUES (?, ?)').bind(userId, oid)
+            );
+            if (officeStatements.length > 0) await db.batch(officeStatements);
+        }
+
         await invalidateConsolidadoCache(c.env.CACHE);
-        return c.json({ success: true, user: newUser }, 201);
+        return c.json({ success: true, user: { id: userId, ...body } }, 201);
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 400);
     }
@@ -235,17 +343,194 @@ app.post('/usuarios', async (c) => {
 app.put('/usuarios/:id', async (c) => {
     const id = c.req.param('id');
     const body = await c.req.json();
-    const { nombre_completo, ci, cargo, unidad, oficina, piso } = body;
+    const { nombre_completo, ci, cargo, cat_unidad_id, ubicacion_fisica_id, oficinas_ids } = body;
 
     try {
-        await getDB(c).prepare(
-            'UPDATE usuarios SET nombre_completo=?, ci=?, cargo=?, unidad=?, oficina=?, piso=? WHERE id=?'
-        ).bind(nombre_completo ?? '', ci ?? '', cargo ?? null, unidad ?? null, oficina ?? null, piso ?? null, id).run();
+        let db: any = getDB(c);
+        if (db === 'CONSOLIDADO') return c.json({ error: 'Operación no permitida en modo consolidado. Seleccione una institución específica para editar funcionarios.' }, 400);
+        if (!db) throw new Error('No se pudo identificar la base de datos destino.');
+        await db.prepare(
+            'UPDATE usuarios SET nombre_completo=?, ci=?, cargo=?, cat_unidad_id=?, ubicacion_fisica_id=? WHERE id=?'
+        ).bind(nombre_completo ?? '', ci ?? '', cargo ?? null, cat_unidad_id ?? null, ubicacion_fisica_id ?? null, id).run();
+
+        // Actualizar oficinas en la tabla intermedia
+        if (oficinas_ids && Array.isArray(oficinas_ids)) {
+            await db.prepare('DELETE FROM usuarios_oficinas WHERE usuario_id = ?').bind(id).run();
+            const officeStatements = oficinas_ids.map(oid =>
+                db.prepare('INSERT OR IGNORE INTO usuarios_oficinas (usuario_id, oficina_id) VALUES (?, ?)').bind(id, oid)
+            );
+            if (officeStatements.length > 0) await db.batch(officeStatements);
+        }
+
         await invalidateConsolidadoCache(c.env.CACHE);
         return c.json({ success: true, id });
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 400);
     }
+});
+
+// --- CATALOGOS MANAGEMENT ---
+
+// Auxiliares
+app.post('/catalogos/auxiliares', async (c) => {
+    try {
+        const { nombre, cat_grupo_contable_id, registrado_por } = await c.req.json();
+        const res = await getDB(c)!.prepare('INSERT INTO cat_auxiliares (nombre, cat_grupo_contable_id, registrado_por) VALUES (?, ?, ?) RETURNING *')
+            .bind(nombre, cat_grupo_contable_id || null, registrado_por || null).first();
+        return c.json(res, 201);
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+app.put('/catalogos/auxiliares/:id', async (c) => {
+    try {
+        const id = c.req.param('id');
+        const { nombre, cat_grupo_contable_id, activo } = await c.req.json();
+        await getDB(c)!.prepare('UPDATE cat_auxiliares SET nombre = ?, cat_grupo_contable_id = ?, activo = ? WHERE id = ?')
+            .bind(nombre, cat_grupo_contable_id || null, activo !== undefined ? activo : 1, id).run();
+        return c.json({ success: true });
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+app.delete('/catalogos/auxiliares/:id', async (c) => {
+    try {
+        await getDB(c)!.prepare('DELETE FROM cat_auxiliares WHERE id = ?').bind(c.req.param('id')).run();
+        return c.json({ success: true });
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+// Grupos Contables
+app.post('/catalogos/grupos', async (c) => {
+    try {
+        const { nombre, vida_util, observaciones, registrado_por } = await c.req.json();
+        const res = await getDB(c)!.prepare('INSERT INTO cat_grupos_contables (nombre, vida_util, observaciones, registrado_por) VALUES (?, ?, ?, ?) RETURNING *')
+            .bind(nombre, vida_util || null, observaciones || null, registrado_por || null).first();
+        return c.json(res, 201);
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+app.put('/catalogos/grupos/:id', async (c) => {
+    try {
+        const id = c.req.param('id');
+        const { nombre, vida_util, observaciones, activo } = await c.req.json();
+        await getDB(c)!.prepare('UPDATE cat_grupos_contables SET nombre = ?, vida_util = ?, observaciones = ?, activo = ? WHERE id = ?')
+            .bind(nombre, vida_util || null, observaciones || null, activo !== undefined ? activo : 1, id).run();
+        return c.json({ success: true });
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+app.delete('/catalogos/grupos/:id', async (c) => {
+    try {
+        await getDB(c)!.prepare('DELETE FROM cat_grupos_contables WHERE id = ?').bind(c.req.param('id')).run();
+        return c.json({ success: true });
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+// Ubicaciones Físicas
+app.post('/catalogos/ubicaciones', async (c) => {
+    try {
+        const { nombre, direccion, observaciones, registrado_por } = await c.req.json();
+        const res = await getDB(c)!.prepare('INSERT INTO ubicacion_fisica (nombre, direccion, observaciones, registrado_por) VALUES (?, ?, ?, ?) RETURNING *')
+            .bind(nombre, direccion || null, observaciones || null, registrado_por || null).first();
+        return c.json(res, 201);
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+app.put('/catalogos/ubicaciones/:id', async (c) => {
+    try {
+        const id = c.req.param('id');
+        const { nombre, direccion, observaciones, activo } = await c.req.json();
+        await getDB(c)!.prepare('UPDATE ubicacion_fisica SET nombre = ?, direccion = ?, observaciones = ?, activo = ? WHERE id = ?')
+            .bind(nombre, direccion || null, observaciones || null, activo !== undefined ? activo : 1, id).run();
+        return c.json({ success: true });
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+app.delete('/catalogos/ubicaciones/:id', async (c) => {
+    try {
+        await getDB(c)!.prepare('DELETE FROM ubicacion_fisica WHERE id = ?').bind(c.req.param('id')).run();
+        return c.json({ success: true });
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+// Unidades
+app.post('/catalogos/unidades', async (c) => {
+    try {
+        const { nombre, ubicacion_fisica_id } = await c.req.json();
+        const res = await getDB(c)!.prepare('INSERT INTO cat_unidades (nombre, ubicacion_fisica_id) VALUES (?, ?) RETURNING *')
+            .bind(nombre, ubicacion_fisica_id || null).first();
+        return c.json(res, 201);
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+app.put('/catalogos/unidades/:id', async (c) => {
+    try {
+        const id = c.req.param('id');
+        const { nombre, ubicacion_fisica_id, activo } = await c.req.json();
+        await getDB(c)!.prepare('UPDATE cat_unidades SET nombre = ?, ubicacion_fisica_id = ?, activo = ? WHERE id = ?')
+            .bind(nombre, ubicacion_fisica_id || null, activo !== undefined ? activo : 1, id).run();
+        return c.json({ success: true });
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+app.delete('/catalogos/unidades/:id', async (c) => {
+    try {
+        await getDB(c)!.prepare('DELETE FROM cat_unidades WHERE id = ?').bind(c.req.param('id')).run();
+        return c.json({ success: true });
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+// Oficinas
+app.post('/catalogos/oficinas', async (c) => {
+    try {
+        const { nombre, unidad_id } = await c.req.json();
+        const res = await getDB(c)!.prepare('INSERT INTO cat_oficinas (nombre, unidad_id) VALUES (?, ?) RETURNING *')
+            .bind(nombre, unidad_id || null).first();
+        return c.json(res, 201);
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+app.put('/catalogos/oficinas/:id', async (c) => {
+    try {
+        const id = c.req.param('id');
+        const { nombre, unidad_id, activo } = await c.req.json();
+        await getDB(c)!.prepare('UPDATE cat_oficinas SET nombre = ?, unidad_id = ?, activo = ? WHERE id = ?')
+            .bind(nombre, unidad_id || null, activo !== undefined ? activo : 1, id).run();
+        return c.json({ success: true });
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+app.delete('/catalogos/oficinas/:id', async (c) => {
+    try {
+        await getDB(c)!.prepare('DELETE FROM cat_oficinas WHERE id = ?').bind(c.req.param('id')).run();
+        return c.json({ success: true });
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+// Pisos
+app.post('/catalogos/pisos', async (c) => {
+    try {
+        const { numero } = await c.req.json();
+        const res = await getDB(c)!.prepare('INSERT INTO cat_pisos (numero) VALUES (?) RETURNING *')
+            .bind(numero).first();
+        return c.json(res, 201);
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+app.put('/catalogos/pisos/:id', async (c) => {
+    try {
+        const id = c.req.param('id');
+        const { numero, activo } = await c.req.json();
+        await getDB(c)!.prepare('UPDATE cat_pisos SET numero = ?, activo = ? WHERE id = ?')
+            .bind(numero, activo !== undefined ? activo : 1, id).run();
+        return c.json({ success: true });
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+});
+
+app.delete('/catalogos/pisos/:id', async (c) => {
+    try {
+        await getDB(c)!.prepare('DELETE FROM cat_pisos WHERE id = ?').bind(c.req.param('id')).run();
+        return c.json({ success: true });
+    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
 });
 
 // --- ACTIVOS ---
@@ -255,10 +540,19 @@ app.get('/activos', async (c) => {
 
     const fetchDBActivos = async (db: D1Database, instName: string) => {
         let query = `
-            SELECT a.*, u.nombre_completo as responsable, 
-                   COALESCE(a.oficina, u.oficina) as oficina
+            SELECT a.*, 
+                   u.nombre_completo as usuario_nombre, u.ci as usuario_ci, u.cargo as usuario_cargo,
+                   uf.nombre as edificio, un.nombre as unidad, of.nombre as oficina, ps.numero as piso,
+                   aux.nombre as auxiliar, grp.nombre as grupo_contable,
+                   grp.vida_util as grupo_vida_util, grp.observaciones as grupo_observaciones
             FROM activos a
             LEFT JOIN usuarios u ON a.usuario_actual_id = u.id
+            LEFT JOIN ubicacion_fisica uf ON a.ubicacion_fisica_id = uf.id
+            LEFT JOIN cat_unidades un ON a.cat_unidad_id = un.id
+            LEFT JOIN cat_oficinas of ON a.cat_oficina_id = of.id
+            LEFT JOIN cat_pisos ps ON a.cat_piso_id = ps.id
+            LEFT JOIN cat_auxiliares aux ON a.cat_auxiliar_id = aux.id
+            LEFT JOIN cat_grupos_contables grp ON a.cat_grupo_contable_id = grp.id
         `;
         if (estado) query += ` WHERE a.estado_actual = ? `;
         query += ` ORDER BY a.codigo_activo ASC `;
@@ -271,17 +565,22 @@ app.get('/activos', async (c) => {
     if (institution === 'consolidado') {
         const cacheKey = estado ? `consolidado:activos:${estado}` : 'consolidado:activos';
         const result = await kvCache(c.env.CACHE, cacheKey, async () => {
-            const [r1, r2, r3] = await Promise.all([
+            const [r1, r2, r3, r4, r5] = await Promise.all([
                 fetchDBActivos(c.env.DB, 'TIERRAS'),
                 fetchDBActivos(c.env.DB_JUSTICIA, 'JUSTICIA'),
-                fetchDBActivos(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
+                fetchDBActivos(c.env.DB_PRESIDENCIA, 'PRESIDENCIA'),
+                c.env.DB_CULTURAS ? fetchDBActivos(c.env.DB_CULTURAS, 'CULTURAS') : Promise.resolve([]),
+                c.env.DB_VICEPRESIDENCIA ? fetchDBActivos(c.env.DB_VICEPRESIDENCIA, 'VICEPRESIDENCIA') : Promise.resolve([])
             ]);
-            return [...r1, ...r2, ...r3];
+            return [...r1, ...r2, ...r3, ...r4, ...r5];
         }, 60);
         return c.json(result);
     }
 
-    const results = await fetchDBActivos(getDB(c), institution.toUpperCase());
+    const db = getDB(c);
+    if (!db) return c.json([]);
+
+    const results = await fetchDBActivos(db, institution.toUpperCase());
     return c.json(results);
 });
 
@@ -289,14 +588,21 @@ app.get('/activos', async (c) => {
 app.get('/activos/usuario/:id', async (c) => {
     const userId = c.req.param('id');
     try {
-        const rows = await getDB(c).prepare(
-            `SELECT a.id, a.codigo_activo, a.descripcion, a.serie, a.estado_actual,
-                    a.unidad, a.oficina, a.piso,
+        const db = getDB(c);
+        if (!db) return c.json([]);
+
+        const rows = await db.prepare(
+            `SELECT a.id, a.codigo_activo, a.descripcion, a.estado_actual,
+                    uf.nombre as edificio, cat_u.nombre as unidad, cat_o.nombre as oficina, cat_p.numero as piso,
                     ac.id as last_acta_id, ac.numero_acta,
                     da.estado_fisico
              FROM activos a
              LEFT JOIN detalles_acta da ON da.activo_id = a.id
              LEFT JOIN actas ac ON ac.id = da.acta_id AND ac.tipo_acta = 'Asignación'
+             LEFT JOIN ubicacion_fisica uf ON a.ubicacion_fisica_id = uf.id
+             LEFT JOIN cat_unidades cat_u ON a.cat_unidad_id = cat_u.id
+             LEFT JOIN cat_oficinas cat_o ON a.cat_oficina_id = cat_o.id
+             LEFT JOIN cat_pisos cat_p ON a.cat_piso_id = cat_p.id
              WHERE a.usuario_actual_id = ?
                AND a.estado_actual = 'Asignado'
                AND da.id = (
@@ -305,7 +611,7 @@ app.get('/activos/usuario/:id', async (c) => {
                    WHERE da2.activo_id = a.id AND ac2.tipo_acta = 'Asignación'
                    ORDER BY da2.id DESC LIMIT 1
                )
-             ORDER BY a.oficina, a.codigo_activo`
+             ORDER BY cat_o.nombre, a.codigo_activo`
         ).bind(userId).all();
         return c.json(rows.results || []);
     } catch (e: any) {
@@ -316,16 +622,28 @@ app.get('/activos/usuario/:id', async (c) => {
 // Crear activo individual
 
 app.post('/activos', async (c) => {
-    const body = await c.req.json();
-    const { codigo_activo, descripcion, serie, estado_actual, registrado_por } = body;
     try {
-        const result = await getDB(c).prepare(
-            'INSERT INTO activos (codigo_activo, descripcion, serie, estado_actual, registrado_por) VALUES (?, ?, ?, ?, ?)'
-        ).bind(codigo_activo ?? '', descripcion ?? '', serie ?? null, estado_actual || 'Disponible', registrado_por ?? null).run();
+        const db = getDB(c)!;
+        const data = await c.req.json();
+        const {
+            codigo_activo, descripcion, serie, estado_actual,
+            ubicacion_fisica_id, cat_unidad_id, cat_oficina_id, cat_piso_id,
+            cat_auxiliar_id, cat_grupo_contable_id, registrado_por } = data;
+
+        const result = await db.prepare(`
+            INSERT INTO activos (
+                codigo_activo, descripcion, estado_actual, 
+                ubicacion_fisica_id, cat_unidad_id, cat_oficina_id, cat_piso_id,
+                cat_auxiliar_id, cat_grupo_contable_id, registrado_por
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+            codigo_activo, descripcion, estado_actual || 'Disponible',
+            ubicacion_fisica_id || null, cat_unidad_id || null, cat_oficina_id || null, cat_piso_id || null,
+            cat_auxiliar_id || null, cat_grupo_contable_id || null, registrado_por || null
+        ).run();
         const id = result.meta.last_row_id;
-        // Invalidar caché consolidado al crear activos
         await invalidateConsolidadoCache(c.env.CACHE);
-        return c.json({ success: true, id, activo: { id, codigo_activo, descripcion, serie: serie || null, estado_actual: estado_actual || 'Disponible', registrado_por } }, 201);
+        return c.json({ success: true, id, activo: { id, ...data } }, 201);
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 400);
     }
@@ -335,8 +653,8 @@ app.post('/activos', async (c) => {
 app.put('/activos/:id/liberar', async (c) => {
     const id = c.req.param('id');
     try {
-        await getDB(c).prepare(
-            'UPDATE activos SET estado_actual = ?, usuario_actual_id = NULL, unidad = NULL, oficina = NULL, piso = NULL WHERE id = ?'
+        await getDB(c)!.prepare(
+            'UPDATE activos SET estado_actual = ?, usuario_actual_id = NULL, ubicacion_fisica_id = NULL, cat_unidad_id = NULL, cat_oficina_id = NULL, cat_piso_id = NULL WHERE id = ?'
         ).bind('Disponible', id).run();
         await invalidateConsolidadoCache(c.env.CACHE);
         return c.json({ success: true, id });
@@ -348,12 +666,25 @@ app.put('/activos/:id/liberar', async (c) => {
 // Editar activo individual
 app.put('/activos/:id', async (c) => {
     const id = c.req.param('id');
-    const body = await c.req.json();
-    const { codigo_activo, descripcion, serie, estado_actual } = body;
     try {
-        await getDB(c).prepare(
-            'UPDATE activos SET codigo_activo=?, descripcion=?, serie=?, estado_actual=? WHERE id=?'
-        ).bind(codigo_activo ?? '', descripcion ?? '', serie ?? null, estado_actual || 'Disponible', id).run();
+        const db = getDB(c)!;
+        const data = await c.req.json();
+        const { codigo_activo, descripcion, serie, estado_actual,
+            ubicacion_fisica_id, cat_unidad_id, cat_oficina_id, cat_piso_id,
+            cat_auxiliar_id, cat_grupo_contable_id } = data;
+
+        await db.prepare(`
+            UPDATE activos SET 
+                codigo_activo = ?, descripcion = ?, estado_actual = ?,
+                ubicacion_fisica_id = ?, cat_unidad_id = ?, cat_oficina_id = ?, cat_piso_id = ?,
+                cat_auxiliar_id = ?, cat_grupo_contable_id = ?
+            WHERE id = ?
+        `).bind(
+            codigo_activo, descripcion, estado_actual,
+            ubicacion_fisica_id || null, cat_unidad_id || null, cat_oficina_id || null, cat_piso_id || null,
+            cat_auxiliar_id || null, cat_grupo_contable_id || null,
+            id
+        ).run();
         await invalidateConsolidadoCache(c.env.CACHE);
         return c.json({ success: true, id });
     } catch (e: any) {
@@ -364,7 +695,11 @@ app.put('/activos/:id', async (c) => {
 
 // Activos disponibles
 app.get('/activos/disponibles', async (c) => {
-    const { results } = await getDB(c).prepare(
+    let db: any = getDB(c);
+    if (db === 'CONSOLIDADO') db = c.env.DB;
+    if (!db) return c.json([]);
+
+    const { results } = await db.prepare(
         'SELECT * FROM activos WHERE estado_actual = "Disponible" ORDER BY codigo_activo ASC'
     ).all();
     return c.json(results);
@@ -378,13 +713,21 @@ app.get('/activos/agrupados', async (c) => {
         const fetchDBAgrupados = async (db: D1Database, instName: string) => {
             const { results } = await db.prepare(`
                 SELECT a.id, a.codigo_activo, a.descripcion, a.estado_actual,
-                       a.unidad as a_unidad, a.oficina as a_oficina, a.piso as a_piso,
+                       uf.nombre as a_edificio, cat_au.nombre as a_unidad, cat_ao.nombre as a_oficina, cat_ap.numero as a_piso,
                        (SELECT ac.id FROM detalles_acta da JOIN actas ac ON da.acta_id = ac.id WHERE da.activo_id = a.id AND ac.tipo_acta='Asignación' ORDER BY ac.fecha_emision DESC LIMIT 1) as last_acta_id,
                        (SELECT da.estado_fisico FROM detalles_acta da JOIN actas ac ON da.acta_id = ac.id WHERE da.activo_id = a.id AND ac.tipo_acta='Asignación' ORDER BY ac.fecha_emision DESC LIMIT 1) as estado_fisico,
                        (SELECT ac2.observaciones FROM actas ac2 WHERE ac2.usuario_id = u.id AND ac2.tipo_acta='Asignación' ORDER BY ac2.fecha_emision DESC LIMIT 1) as observaciones,
-                       u.id as usuario_id, u.nombre_completo, u.ci, u.cargo, u.unidad as u_unidad, u.oficina as u_oficina, u.piso as u_piso
+                       u.id as usuario_id, u.nombre_completo, u.ci, u.cargo,
+                       uf_u.nombre as u_edificio, un_u.nombre as u_unidad,
+                       (SELECT GROUP_CONCAT(off.nombre, ', ') FROM usuarios_oficinas uo JOIN cat_oficinas off ON uo.oficina_id = off.id WHERE uo.usuario_id = u.id) as u_oficinas
                 FROM activos a
                 JOIN usuarios u ON a.usuario_actual_id = u.id
+                LEFT JOIN ubicacion_fisica uf ON a.ubicacion_fisica_id = uf.id
+                LEFT JOIN cat_unidades cat_au ON a.cat_unidad_id = cat_au.id
+                LEFT JOIN cat_oficinas cat_ao ON a.cat_oficina_id = cat_ao.id
+                LEFT JOIN cat_pisos cat_ap ON a.cat_piso_id = cat_ap.id
+                LEFT JOIN ubicacion_fisica uf_u ON u.ubicacion_fisica_id = uf_u.id
+                LEFT JOIN cat_unidades un_u ON u.cat_unidad_id = un_u.id
                 WHERE a.estado_actual = 'Asignado'
                 ORDER BY u.nombre_completo ASC, a_oficina ASC, a.codigo_activo ASC
             `).all();
@@ -400,7 +743,9 @@ app.get('/activos/agrupados', async (c) => {
             ]);
             allResults = [...r1, ...r2, ...r3];
         } else {
-            allResults = await fetchDBAgrupados(getDB(c), institution.toUpperCase());
+            const db = getDB(c);
+            if (!db) return c.json([]);
+            allResults = await fetchDBAgrupados(db, institution.toUpperCase());
         }
 
         // Agrupación en memoria (Responsable -> Oficina -> Activos)
@@ -421,17 +766,19 @@ app.get('/activos/agrupados', async (c) => {
 
             const persona = mapPersonas.get(ci) as any;
 
+            const edificio = row.a_edificio || row.u_edificio;
             const unidad = row.a_unidad || row.u_unidad;
-            const oficina = row.a_oficina || row.u_oficina;
-            const piso = row.a_piso || row.u_piso;
+            const oficinas = row.a_oficina || row.u_oficinas || '';
+            const piso = row.a_piso || '';
 
-            const keyOficina = `${unidad || ''}|${oficina || ''}|${piso || ''}|${row.last_acta_id || ''}`;
+            const keyOficina = `${edificio || ''}|${unidad || ''}|${oficinas || ''}|${piso || ''}|${row.last_acta_id || ''}`;
 
             if (!persona.ubicaciones.has(keyOficina)) {
                 persona.ubicaciones.set(keyOficina, {
                     usuario_id: row.usuario_id,
+                    edificio: edificio,
                     unidad: unidad,
-                    oficina: oficina,
+                    oficina: oficinas,
                     piso: piso,
                     institucion: row.institucion,
                     acta_id: row.last_acta_id || null,
@@ -503,7 +850,10 @@ app.get('/actas', async (c) => {
             ));
         }
 
-        const results = await fetchActasFromDB(getDB(c), institution.toUpperCase());
+        const db = getDB(c);
+        if (!db) return c.json([]);
+
+        const results = await fetchActasFromDB(db, institution.toUpperCase());
         return c.json(results);
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 500);
@@ -512,7 +862,7 @@ app.get('/actas', async (c) => {
 
 app.post('/actas', async (c) => {
     const body = await c.req.json();
-    const { tipo_acta, usuario_id, activos_seleccionados, observaciones, unidad, oficina, piso, appendToActaId, realizado_por } = body;
+    const { tipo_acta, usuario_id, activos_seleccionados, observaciones, ubicacion_fisica_id, cat_unidad_id, cat_oficina_id, cat_piso_id, appendToActaId, realizado_por } = body;
 
     if (!usuario_id) {
         return c.json({ error: "Faltan datos obligatorios", message: "El ID del usuario es requerido para generar el acta." }, 400);
@@ -525,11 +875,12 @@ app.post('/actas', async (c) => {
     let actaId = appendToActaId;
 
     try {
+        const db = getDB(c)!;
         if (!actaId) {
             // 1. Crear el acta con snapshot de ubicación si no hay ID de acta para aumentar
-            const batchResult = await getDB(c).batch([
-                getDB(c).prepare('INSERT INTO actas (tipo_acta, usuario_id, observaciones, unidad, oficina, piso, realizado_por) VALUES (?, ?, ?, ?, ?, ?, ?)')
-                    .bind(tipo_acta, usuario_id, observaciones ?? null, unidad ?? null, oficina ?? null, piso ?? null, realizado_por ?? null)
+            const batchResult = await db.batch([
+                db.prepare('INSERT INTO actas (tipo_acta, usuario_id, observaciones, ubicacion_fisica_id, cat_unidad_id, cat_oficina_id, cat_piso_id, realizado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+                    .bind(tipo_acta, usuario_id, observaciones ?? null, ubicacion_fisica_id ?? null, cat_unidad_id ?? null, cat_oficina_id ?? null, cat_piso_id ?? null, realizado_por ?? null)
             ]);
             actaId = batchResult[0].meta.last_row_id;
         }
@@ -542,22 +893,23 @@ app.post('/actas', async (c) => {
         const nuevoResponsable = tipo_acta === 'Asignación' ? usuario_id : null;
 
         // Ubicación de destino
-        const dest_unidad = tipo_acta === 'Asignación' ? (unidad || null) : null;
-        const dest_oficina = tipo_acta === 'Asignación' ? (oficina || null) : null;
-        const dest_piso = tipo_acta === 'Asignación' ? (piso || null) : null;
+        const dest_ubicacion_fisica = tipo_acta === 'Asignación' ? (ubicacion_fisica_id || null) : null;
+        const dest_cat_unidad = tipo_acta === 'Asignación' ? (cat_unidad_id || null) : null;
+        const dest_cat_oficina = tipo_acta === 'Asignación' ? (cat_oficina_id || null) : null;
+        const dest_cat_piso = tipo_acta === 'Asignación' ? (cat_piso_id || null) : null;
 
         for (const item of activos_seleccionados) {
             detailStatements.push(
-                getDB(c).prepare('INSERT INTO detalles_acta (acta_id, activo_id, estado_fisico) VALUES (?, ?, ?)')
+                db.prepare('INSERT INTO detalles_acta (acta_id, activo_id, estado_fisico) VALUES (?, ?, ?)')
                     .bind(actaId, item.id, item.estado_fisico)
             );
             statusUpdateStatements.push(
-                getDB(c).prepare('UPDATE activos SET estado_actual = ?, usuario_actual_id = ?, unidad = ?, oficina = ?, piso = ? WHERE id = ?')
-                    .bind(nuevoEstado, nuevoResponsable ?? null, dest_unidad ?? null, dest_oficina ?? null, dest_piso ?? null, item.id)
+                db.prepare('UPDATE activos SET estado_actual = ?, usuario_actual_id = ?, ubicacion_fisica_id = ?, cat_unidad_id = ?, cat_oficina_id = ?, cat_piso_id = ? WHERE id = ?')
+                    .bind(nuevoEstado, nuevoResponsable ?? null, dest_ubicacion_fisica ?? null, dest_cat_unidad ?? null, dest_cat_oficina ?? null, dest_cat_piso ?? null, item.id)
             );
         }
 
-        await getDB(c).batch([...detailStatements, ...statusUpdateStatements]);
+        await db.batch([...detailStatements, ...statusUpdateStatements]);
 
         await invalidateConsolidadoCache(c.env.CACHE);
         return c.json({ success: true, actaId });
@@ -571,7 +923,7 @@ app.post('/actas', async (c) => {
     }
 });
 
-// --- BULK IMPORT ---
+// --- BULK IMPORT (Soportando IDs de Catálogo) ---
 app.post('/activos/bulk', async (c) => {
     const assets = await c.req.json();
     if (!Array.isArray(assets)) return c.json({ error: 'Formato inválido' }, 400);
@@ -581,16 +933,34 @@ app.post('/activos/bulk', async (c) => {
         const e = est.trim().toLowerCase();
         if (e.includes('asign')) return 'Asignado';
         if (e.includes('manten')) return 'Mantenimiento';
-        return 'Disponible'; // Por defecto
+        return 'Disponible';
     };
 
+    const db = getDB(c);
+    if (!db) return c.json({ error: 'DB no disponible' }, 500);
+
     const statements = assets.map(a =>
-        getDB(c).prepare('INSERT OR IGNORE INTO activos (codigo_activo, descripcion, serie, estado_actual) VALUES (?, ?, ?, ?)')
-            .bind(a.codigo_activo ?? '', a.descripcion ?? '', a.serie ?? null, formatEstado(a.estado_actual))
+        db.prepare(`
+            INSERT OR IGNORE INTO activos (
+                codigo_activo, descripcion, estado_actual,
+                ubicacion_fisica_id, cat_unidad_id, cat_oficina_id, cat_piso_id, 
+                cat_auxiliar_id, cat_grupo_contable_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+            a.codigo_activo ?? '',
+            a.descripcion ?? '',
+            formatEstado(a.estado_actual),
+            a.ubicacion_fisica_id || null,
+            a.cat_unidad_id || null,
+            a.cat_oficina_id || null,
+            a.cat_piso_id || null,
+            a.cat_auxiliar_id || null,
+            a.cat_grupo_contable_id || null
+        )
     );
 
     try {
-        await getDB(c).batch(statements);
+        await db.batch(statements);
         await invalidateConsolidadoCache(c.env.CACHE);
         return c.json({ success: true, count: assets.length });
     } catch (e: any) {
@@ -604,8 +974,9 @@ app.post('/migrate', async (c) => {
         const { data, type = 'full' } = await c.req.json();
         if (!Array.isArray(data) || data.length === 0) return c.json({ error: 'Formato inválido o vacío' }, 400);
 
-        const results = { created_users: 0, created_assets: 0, failed: 0 };
+        const results = { created_users: 0, created_assets: 0, created_catalogs: 0, failed: 0 };
         const db = getDB(c);
+        if (!db) return c.json({ error: 'DB no disponible' }, 500);
 
         console.log(`Iniciando migración de ${data.length} registros. Tipo: ${type}`);
 
@@ -636,6 +1007,7 @@ app.post('/migrate', async (c) => {
             const batch = data.slice(i, i + BATCH_SIZE);
             const userStatements: any[] = [];
             const assetStatements: any[] = [];
+            const catalogStatements: any[] = [];
 
             // a) Primera pasada: Identificar y preparar creación de NUEVOS usuarios de este lote
             // Usamos un Set temporal para no intentar crear el mismo usuario dos veces en el mismo lote
@@ -648,14 +1020,11 @@ app.post('/migrate', async (c) => {
                 if (!usuariosMap.has(ciStr) && !newUsersInBatch.has(ciStr) && (type === 'full' || type === 'users')) {
                     userStatements.push(
                         db.prepare(
-                            'INSERT INTO usuarios (nombre_completo, ci, cargo, unidad, oficina, piso) VALUES (?, ?, ?, ?, ?, ?) RETURNING id, ci'
+                            'INSERT INTO usuarios (nombre_completo, ci, cargo) VALUES (?, ?, ?) RETURNING id, ci'
                         ).bind(
                             item.responsable_nombre || 'S/N',
                             ciStr,
-                            item.responsable_cargo || null,
-                            item.unidad || null,
-                            item.oficina || null,
-                            item.piso || null
+                            item.responsable_cargo || null
                         )
                     );
                     newUsersInBatch.add(ciStr);
@@ -687,17 +1056,23 @@ app.post('/migrate', async (c) => {
                         const userId = ciStr ? usuariosMap.get(ciStr) || null : null;
 
                         assetStatements.push(
-                            db.prepare(
-                                'INSERT OR REPLACE INTO activos (codigo_activo, descripcion, serie, estado_actual, usuario_actual_id, unidad, oficina, piso) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-                            ).bind(
+                            db.prepare(`
+                                INSERT OR REPLACE INTO activos (
+                                    codigo_activo, descripcion, estado_actual, usuario_actual_id,
+                                    ubicacion_fisica_id, cat_unidad_id, cat_oficina_id, cat_piso_id,
+                                    cat_auxiliar_id, cat_grupo_contable_id
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            `).bind(
                                 item.codigo_activo,
                                 item.descripcion,
-                                item.serie || null,
                                 formatEstado(item.estado_actual, !!userId),
                                 userId,
-                                item.unidad || null,
-                                item.oficina || null,
-                                item.piso || null
+                                item.ubicacion_fisica_id || null,
+                                item.cat_unidad_id || null,
+                                item.cat_oficina_id || null,
+                                item.cat_piso_id || null,
+                                item.cat_auxiliar_id || null,
+                                item.cat_grupo_contable_id || null
                             )
                         );
                     } catch (err) {
@@ -716,10 +1091,69 @@ app.post('/migrate', async (c) => {
                     }
                 }
             }
+
+            // c) Catálogos Normales (Pisos, Ubicaciones, Auxiliares, Grupos)
+            if (['pisos', 'ubicaciones', 'auxiliares', 'grupos'].includes(type)) {
+                for (const item of batch) {
+                    try {
+                        if (type === 'pisos') {
+                            catalogStatements.push(db.prepare('INSERT OR IGNORE INTO cat_pisos (numero) VALUES (?)').bind(item.numero));
+                        } else if (type === 'ubicaciones') {
+                            catalogStatements.push(db.prepare('INSERT OR IGNORE INTO ubicacion_fisica (nombre, direccion, observaciones) VALUES (?, ?, ?)')
+                                .bind(item.nombre, item.direccion || null, item.observaciones || null));
+                        } else if (type === 'auxiliares') {
+                            catalogStatements.push(db.prepare('INSERT OR IGNORE INTO cat_auxiliares (nombre) VALUES (?)').bind(item.nombre));
+                        } else if (type === 'grupos') {
+                            catalogStatements.push(db.prepare('INSERT OR IGNORE INTO cat_grupos_contables (nombre, vida_util, observaciones) VALUES (?, ?, ?)')
+                                .bind(item.nombre, item.vida_util || null, item.observaciones || null));
+                        }
+                    } catch { results.failed++; }
+                }
+            }
+
+            // d) Recuperación de Pisos (NUEVO)
+            if (type === 'recovery_floors') {
+                // Primero aseguramos que todos los pisos de este lote existan
+                const uniqueFloorsInBatch = Array.from(new Set(batch.map(item => String(item.piso || '').trim()).filter(Boolean)));
+                for (const f of uniqueFloorsInBatch) {
+                    await db.prepare('INSERT OR IGNORE INTO cat_pisos (numero) VALUES (?)').bind(f).run();
+                }
+
+                // Cargamos el mapa de pisos actualizado
+                const { results: allFloors } = await db.prepare('SELECT id, numero FROM cat_pisos').all();
+                const floorMap = new Map<string, number>();
+                allFloors?.forEach((f: any) => floorMap.set(String(f.numero).trim(), f.id));
+
+                for (const item of batch) {
+                    try {
+                        const pisoNombre = String(item.piso || '').trim();
+                        const floorId = floorMap.get(pisoNombre);
+                        if (floorId && item.codigo_activo) {
+                            catalogStatements.push(
+                                db.prepare('UPDATE activos SET cat_piso_id = ? WHERE codigo_activo = ?')
+                                    .bind(floorId, item.codigo_activo)
+                            );
+                        }
+                    } catch { results.failed++; }
+                }
+            }
+
+            if (catalogStatements.length > 0) {
+                try {
+                    await db.batch(catalogStatements);
+                    results.created_catalogs += catalogStatements.length;
+                } catch (e: any) {
+                    console.error("Error en batch de catálogos/recuperación:", e.message);
+                    results.failed += catalogStatements.length;
+                }
+            }
         }
 
         console.log("Migración finalizada con resultados:", results);
-        await invalidateConsolidadoCache(c.env.CACHE);
+        if (c.env.CACHE) {
+            const keys = ['unidades', 'oficinas', 'pisos', 'auxiliares', 'grupos', 'consolidado:activos', 'consolidado:usuarios'];
+            for (const k of keys) await c.env.CACHE.delete(k);
+        }
         return c.json({ success: true, ...results });
     } catch (e: any) {
         console.error("Error fatal en migración masiva:", e.message);
@@ -732,26 +1166,35 @@ app.get('/actas/:id', async (c) => {
         const id = c.req.param('id');
         const targetInst = c.req.header('x-target-institution') || c.req.header('x-institution') || 'tierras';
 
-        let db: D1Database;
+        let db: D1Database | undefined;
         const inst = targetInst.toLowerCase();
         if (inst === 'justicia') db = c.env.DB_JUSTICIA;
         else if (inst === 'presidencia') db = c.env.DB_PRESIDENCIA;
         else db = c.env.DB;
 
+        if (!db) return c.json({ error: 'DB no encontrada' }, 500);
+
         const acta = await db.prepare(`
             SELECT a.*, u.nombre_completo, u.ci, u.cargo,
-                   COALESCE(a.unidad, u.unidad) as unidad,
-                   COALESCE(a.oficina, u.oficina) as oficina,
-                   COALESCE(a.piso, u.piso) as piso
+                   COALESCE(uf.nombre, uf_u.nombre) as edificio,
+                   COALESCE(cat_au.nombre, un_u.nombre) as unidad,
+                   COALESCE(cat_ao.nombre, (SELECT GROUP_CONCAT(off.nombre, ', ') FROM usuarios_oficinas uo JOIN cat_oficinas off ON uo.oficina_id = off.id WHERE uo.usuario_id = u.id)) as oficina,
+                   cat_ap.numero as piso
             FROM actas a
             JOIN usuarios u ON a.usuario_id = u.id
+            LEFT JOIN ubicacion_fisica uf ON a.ubicacion_fisica_id = uf.id
+            LEFT JOIN cat_unidades cat_au ON a.cat_unidad_id = cat_au.id
+            LEFT JOIN cat_oficinas cat_ao ON a.cat_oficina_id = cat_ao.id
+            LEFT JOIN cat_pisos cat_ap ON a.cat_piso_id = cat_ap.id
+            LEFT JOIN ubicacion_fisica uf_u ON u.ubicacion_fisica_id = uf_u.id
+            LEFT JOIN cat_unidades un_u ON u.cat_unidad_id = un_u.id
             WHERE a.id = ?
         `).bind(id).first();
 
         if (!acta) return c.json({ error: 'Acta no encontrada' }, 404);
 
         const { results: activos } = await db.prepare(`
-            SELECT ac.id, da.estado_fisico, ac.codigo_activo, ac.descripcion
+            SELECT da.activo_id as id, da.estado_fisico, ac.codigo_activo, ac.descripcion
             FROM detalles_acta da
             JOIN activos ac ON da.activo_id = ac.id
             WHERE da.acta_id = ?
@@ -771,7 +1214,10 @@ app.put('/detalles_acta/estado', async (c) => {
     const body = await c.req.json();
     const { acta_id, activo_id, estado_fisico } = body;
     try {
-        await getDB(c).prepare(
+        const db = getDB(c);
+        if (!db) return c.json({ error: 'DB no disponible' }, 500);
+
+        await db.prepare(
             'UPDATE detalles_acta SET estado_fisico = ? WHERE acta_id = ? AND activo_id = ?'
         ).bind(estado_fisico ?? 'Bueno', acta_id, activo_id).run();
         return c.json({ success: true });
@@ -786,11 +1232,13 @@ app.get('/auditorias/usuario/:id', async (c) => {
     const targetInst = c.req.header('x-target-institution') || c.req.header('x-institution') || 'tierras';
 
     try {
-        let db: D1Database;
+        let db: D1Database | undefined;
         const inst = targetInst.toLowerCase();
         if (inst === 'justicia') db = c.env.DB_JUSTICIA;
         else if (inst === 'presidencia') db = c.env.DB_PRESIDENCIA;
         else db = c.env.DB;
+
+        if (!db) return c.json([]);
 
         // Intentamos con todos los campos (incluyendo el nuevo 'observacion')
         try {
@@ -816,11 +1264,13 @@ app.post('/auditorias', async (c) => {
     const targetInst = institucion || c.req.header('x-target-institution') || c.req.header('x-institution') || 'tierras';
 
     try {
-        let db: D1Database;
+        let db: D1Database | undefined;
         const inst = targetInst.toLowerCase();
         if (inst === 'justicia') db = c.env.DB_JUSTICIA;
         else if (inst === 'presidencia') db = c.env.DB_PRESIDENCIA;
         else db = c.env.DB;
+
+        if (!db) return c.json({ error: 'DB no disponible' }, 500);
 
         try {
             // Intento completo
@@ -845,11 +1295,13 @@ app.delete('/auditorias/usuario/:id', async (c) => {
     const targetInst = c.req.header('x-target-institution') || c.req.header('x-institution') || 'tierras';
 
     try {
-        let db: D1Database;
+        let db: D1Database | undefined;
         const inst = targetInst.toLowerCase();
         if (inst === 'justicia') db = c.env.DB_JUSTICIA;
         else if (inst === 'presidencia') db = c.env.DB_PRESIDENCIA;
         else db = c.env.DB;
+
+        if (!db) return c.json({ error: 'DB no disponible' }, 500);
 
         await db.prepare('DELETE FROM auditorias_fisicas WHERE usuario_auditado_id = ?').bind(userId).run();
         return c.json({ success: true });
@@ -863,7 +1315,10 @@ app.delete('/api/auditorias/usuario/:userId/activo/:activoId', async (c) => {
     const userId = c.req.param('userId');
     const activoId = c.req.param('activoId');
     try {
-        await getDB(c).prepare(
+        const db = getDB(c);
+        if (!db) return c.json({ error: 'DB no disponible' }, 500);
+
+        await db.prepare(
             'DELETE FROM auditorias_fisicas WHERE usuario_auditado_id = ? AND activo_id = ?'
         ).bind(userId, activoId).run();
         return c.json({ success: true });
@@ -892,13 +1347,15 @@ app.get('/bitacora', async (c) => {
                         ac.fecha_emision,
                         ac.realizado_por,
                         ac.observaciones,
-                        a.oficina,
-                        a.piso,
+                        cat_ao.nombre      AS oficina,
+                        cat_ap.numero      AS piso,
                         ac.id              AS acta_id
                     FROM detalles_acta da
                     JOIN actas ac       ON da.acta_id  = ac.id
                     JOIN activos a      ON da.activo_id = a.id
                     LEFT JOIN usuarios u ON ac.usuario_id = u.id
+                    LEFT JOIN cat_oficinas cat_ao ON a.cat_oficina_id = cat_ao.id
+                    LEFT JOIN cat_pisos cat_ap ON a.cat_piso_id = cat_ap.id
                     
                     UNION ALL
                     
@@ -910,12 +1367,14 @@ app.get('/bitacora', async (c) => {
                         af.fecha_auditoria as fecha_emision,
                         af.realizado_por,
                         'Hallazgo físico en auditoría' as observaciones,
-                        a.oficina,
-                        a.piso,
+                        cat_ao.nombre      AS oficina,
+                        cat_ap.numero      AS piso,
                         af.id              AS acta_id
                     FROM auditorias_fisicas af
                     JOIN activos a      ON af.activo_id = a.id
                     JOIN usuarios u ON af.usuario_auditado_id = u.id
+                    LEFT JOIN cat_oficinas cat_ao ON a.cat_oficina_id = cat_ao.id
+                    LEFT JOIN cat_pisos cat_ap ON a.cat_piso_id = cat_ap.id
                 )
                 ORDER BY fecha_emision DESC
                 LIMIT ?
@@ -925,18 +1384,23 @@ app.get('/bitacora', async (c) => {
         };
 
         if (institution === 'consolidado') {
-            const [r1, r2, r3] = await Promise.all([
+            const [r1, r2, r3, r4, r5] = await Promise.all([
                 fetchBitacoraFromDB(c.env.DB, 'TIERRAS'),
                 fetchBitacoraFromDB(c.env.DB_JUSTICIA, 'JUSTICIA'),
-                fetchBitacoraFromDB(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
+                fetchBitacoraFromDB(c.env.DB_PRESIDENCIA, 'PRESIDENCIA'),
+                c.env.DB_CULTURAS ? fetchBitacoraFromDB(c.env.DB_CULTURAS, 'CULTURAS') : Promise.resolve([]),
+                c.env.DB_VICEPRESIDENCIA ? fetchBitacoraFromDB(c.env.DB_VICEPRESIDENCIA, 'VICEPRESIDENCIA') : Promise.resolve([])
             ]);
-            return c.json([...r1, ...r2, ...r3].sort((a: any, b: any) =>
+            return c.json([...r1, ...r2, ...r3, ...r4, ...r5].sort((a: any, b: any) =>
                 new Date(b.fecha_emision).getTime() - new Date(a.fecha_emision).getTime()
             ).slice(0, limit));
         }
 
-        const results = await fetchBitacoraFromDB(getDB(c), institution.toUpperCase());
-        return c.json(results);
+        const db = getDB(c);
+        if (!db) return c.json([]);
+
+        const result = await fetchBitacoraFromDB(db, institution.toUpperCase());
+        return c.json(result.slice(0, limit));
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 500);
     }
@@ -981,30 +1445,78 @@ app.post('/auth/login', async (c) => {
 // Crear tabla system_users si no existe (migración automática)
 app.post('/auth/migrate', async (c) => {
     try {
-        await getDB(c).prepare(`
-            CREATE TABLE IF NOT EXISTS system_users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                nombre TEXT NOT NULL,
-                password_hash TEXT NOT NULL,
-                rol TEXT CHECK(rol IN ('admin', 'tecnico')) DEFAULT 'tecnico',
-                activo INTEGER DEFAULT 1,
-                created_at TEXT DEFAULT (datetime('now'))
-            )
-        `).run();
+        const dbs = [
+            { name: 'TIERRAS', db: c.env.DB },
+            { name: 'JUSTICIA', db: c.env.DB_JUSTICIA },
+            { name: 'PRESIDENCIA', db: c.env.DB_PRESIDENCIA },
+            { name: 'CULTURAS', db: c.env.DB_CULTURAS },
+            { name: 'VICEPRESIDENCIA', db: c.env.DB_VICEPRESIDENCIA }
+        ].filter(d => !!d.db);
 
-        // Columna realizado_por en actas
-        try { await getDB(c).prepare('ALTER TABLE actas ADD COLUMN realizado_por TEXT').run(); } catch { }
-        // Columna observacion en auditorias_fisicas
-        try { await getDB(c).prepare('ALTER TABLE auditorias_fisicas ADD COLUMN observacion TEXT').run(); } catch { }
+        for (const { name, db } of dbs) {
+            if (!db) continue;
 
-        // Seed admin por defecto
-        const hash = await hashPassword('admin123');
-        await getDB(c).prepare(
-            'INSERT OR IGNORE INTO system_users (username, nombre, password_hash, rol) VALUES (?, ?, ?, ?)'
-        ).bind('admin', 'Administrador', hash, 'admin').run();
+            // Tabla system_users
+            await db.prepare(`
+                CREATE TABLE IF NOT EXISTS system_users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL UNIQUE,
+                    nombre TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    rol TEXT CHECK(rol IN ('admin', 'tecnico')) DEFAULT 'tecnico',
+                    activo INTEGER DEFAULT 1,
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            `).run();
 
-        return c.json({ success: true, message: 'Migración completada.' });
+            // Tablas de Catálogo nuevas
+            await db.prepare(`
+                CREATE TABLE IF NOT EXISTS cat_auxiliares (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL UNIQUE,
+                    registrado_por TEXT,
+                    fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            `).run();
+
+            await db.prepare(`
+                CREATE TABLE IF NOT EXISTS cat_grupos_contables (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL UNIQUE,
+                    vida_util INTEGER,
+                    observaciones TEXT,
+                    registrado_por TEXT,
+                    fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            `).run();
+
+            // Columnas auxiliares y grupos contables en activos
+            try { await db.prepare('ALTER TABLE activos ADD COLUMN cat_auxiliar_id INTEGER').run(); } catch { }
+            try { await db.prepare('ALTER TABLE activos ADD COLUMN cat_grupo_contable_id INTEGER').run(); } catch { }
+
+            // Nuevas columnas en cat_grupos_contables
+            try { await db.prepare('ALTER TABLE cat_grupos_contables ADD COLUMN vida_util INTEGER').run(); } catch { }
+            try { await db.prepare('ALTER TABLE cat_grupos_contables ADD COLUMN observaciones TEXT').run(); } catch { }
+
+            // Columna realizado_por en actas
+            try { await db.prepare('ALTER TABLE actas ADD COLUMN realizado_por TEXT').run(); } catch { }
+            // Columna observacion en auditorias_fisicas
+            try { await db.prepare('ALTER TABLE auditorias_fisicas ADD COLUMN observacion TEXT').run(); } catch { }
+
+            // Seed admin por defecto (en todas las DBs para permitir login e integridad)
+            const hash = await hashPassword('admin123');
+            await db.prepare(
+                'INSERT OR IGNORE INTO system_users (username, nombre, password_hash, rol) VALUES (?, ?, ?, ?)'
+            ).bind('admin', 'Administrador', hash, 'admin').run();
+        }
+
+        // Limpiar caché de catálogos para forzar recarga en todas las inst
+        if (c.env.CACHE) {
+            const keys = ['unidades', 'oficinas', 'pisos', 'auxiliares', 'grupos', 'consolidado:activos'];
+            for (const k of keys) await c.env.CACHE.delete(k);
+        }
+
+        return c.json({ success: true, message: 'Migración global completada en todas las bases de datos.' });
     } catch (e: any) {
         return c.json({ error: formatError(e) }, 500);
     }
@@ -1022,15 +1534,17 @@ app.get('/system-users', async (c) => {
             return results.map((r: any) => ({ ...r, institucion: instName }));
         };
 
-        const [r1, r2, r3] = await Promise.all([
+        const [r1, r2, r3, r4, r5] = await Promise.all([
             fetchDBSystemUsers(c.env.DB, 'TIERRAS'),
             fetchDBSystemUsers(c.env.DB_JUSTICIA, 'JUSTICIA'),
-            fetchDBSystemUsers(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
+            fetchDBSystemUsers(c.env.DB_PRESIDENCIA, 'PRESIDENCIA'),
+            c.env.DB_CULTURAS ? fetchDBSystemUsers(c.env.DB_CULTURAS, 'CULTURAS') : Promise.resolve([]),
+            c.env.DB_VICEPRESIDENCIA ? fetchDBSystemUsers(c.env.DB_VICEPRESIDENCIA, 'VICEPRESIDENCIA') : Promise.resolve([])
         ]);
 
         // Agrupar por username para saber en qué DBs está cada uno
         const userMap = new Map();
-        [...r1, ...r2, ...r3].forEach(u => {
+        [...r1, ...r2, ...r3, ...r4, ...r5].forEach(u => {
             if (!userMap.has(u.username)) {
                 userMap.set(u.username, { ...u, instituciones: [u.institucion] });
             } else {
@@ -1107,14 +1621,16 @@ app.put('/system-users/:id', async (c) => {
             : [c.req.header('x-institution') || 'tierras'];
 
         const hash = password ? await hashPassword(password) : null;
-        const allPossibleInsts = ['tierras', 'justicia', 'presidencia'];
+        const allPossibleInsts = ['tierras', 'justicia', 'presidencia', 'culturas', 'vicepresidencia'];
 
         const syncPromises = allPossibleInsts.map(async (inst: string) => {
             let db: D1Database;
             const i = inst.toLowerCase();
-            if (i === 'justicia') db = c.env.DB_JUSTICIA;
-            else if (i === 'presidencia') db = c.env.DB_PRESIDENCIA;
-            else db = c.env.DB;
+            if (i === 'justicia') db = c.env.DB_JUSTICIA!;
+            else if (i === 'presidencia') db = c.env.DB_PRESIDENCIA!;
+            else if (i === 'culturas') db = c.env.DB_CULTURAS!;
+            else if (i === 'vicepresidencia') db = c.env.DB_VICEPRESIDENCIA!;
+            else db = c.env.DB!;
 
             const isSelected = targetInsts.some(ti => ti.toLowerCase() === i);
             const usernameToUse = idOrUsername.toLowerCase().trim(); // En este sistema usamos username como ID principal de facto
@@ -1167,11 +1683,11 @@ app.delete('/system-users/:id', async (c) => {
         const isNumericId = /^\d+$/.test(idOrUsername);
         const usernameToUse = idOrUsername.toLowerCase().trim();
 
-        const dbs = [c.env.DB, c.env.DB_JUSTICIA, c.env.DB_PRESIDENCIA];
+        const dbs = [c.env.DB, c.env.DB_JUSTICIA, c.env.DB_PRESIDENCIA, c.env.DB_CULTURAS, c.env.DB_VICEPRESIDENCIA];
 
         await Promise.all(dbs.map(db =>
-            db.prepare(`UPDATE system_users SET activo = 0 WHERE ${isNumericId ? 'id' : 'username'} = ?`)
-                .bind(isNumericId ? parseInt(idOrUsername) : usernameToUse).run()
+            db ? db.prepare(`UPDATE system_users SET activo = 0 WHERE ${isNumericId ? 'id' : 'username'} = ?`)
+                .bind(isNumericId ? parseInt(idOrUsername) : usernameToUse).run() : Promise.resolve()
         ));
 
         return c.json({ success: true });

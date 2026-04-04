@@ -15,7 +15,7 @@ const TABLES = [
         color: 'text-indigo-600',
         bg: 'bg-indigo-50',
         border: 'border-indigo-300',
-        fields: ['codigo_activo', 'descripcion', 'serie', 'estado_actual', 'responsable_nombre', 'responsable_ci', 'responsable_cargo', 'unidad', 'oficina', 'piso'],
+        fields: ['codigo_activo', 'descripcion', 'estado_actual', 'responsable_nombre', 'responsable_ci', 'responsable_cargo', 'unidad', 'oficina', 'piso'],
         sample: [
             ['MDRYTVT-001', 'Monitor HP 24"', 'SN123456', 'Asignado', 'Juan Perez', '1234567', 'Técnico', 'Sistemas', 'Ofic. 1', 'Piso 1'],
             ['MDRYTVT-002', 'Teclado Logitech', 'SN789012', 'Disponible', '', '', '', '', '', ''],
@@ -28,7 +28,7 @@ const TABLES = [
         color: 'text-emerald-600',
         bg: 'bg-emerald-50',
         border: 'border-emerald-300',
-        fields: ['codigo_activo', 'descripcion', 'serie', 'estado_actual'],
+        fields: ['codigo_activo', 'descripcion', 'estado_actual'],
         sample: [
             ['MDRYTVT-001', 'Monitor HP 24"', 'SN123456', 'Disponible'],
             ['MDRYTVT-002', 'Teclado Logitech', 'SN789012', 'Disponible'],
@@ -41,12 +41,66 @@ const TABLES = [
         color: 'text-blue-600',
         bg: 'bg-blue-50',
         border: 'border-blue-300',
-        fields: ['nombre_completo', 'ci', 'cargo', 'unidad', 'oficina', 'piso'],
+        fields: ['nombre_completo', 'ci', 'cargo'],
         sample: [
-            ['Juan Perez Quispe', '1234567', 'Técnico', 'Sistemas', 'Ofic. 1', 'Piso 1'],
-            ['Ana Lopez Mamani', '7654321', 'Secretaria', 'RRHH', 'Ofic. 2', 'Piso 2'],
+            ['Juan Perez Quispe', '1234567', 'Técnico'],
+            ['Ana Lopez Mamani', '7654321', 'Secretaria'],
         ]
     },
+    {
+        id: 'pisos',
+        label: 'Catálogo: Pisos',
+        icon: TableIcon,
+        color: 'text-amber-600',
+        bg: 'bg-amber-50',
+        border: 'border-amber-300',
+        fields: ['numero'],
+        sample: [
+            ['Piso 1'],
+            ['Planta Baja'],
+            ['Mezzanine'],
+        ]
+    },
+    {
+        id: 'ubicaciones',
+        label: 'Catálogo: Ubicaciones Físicas (Edificios)',
+        icon: TableIcon,
+        color: 'text-purple-600',
+        bg: 'bg-purple-50',
+        border: 'border-purple-300',
+        fields: ['nombre', 'direccion', 'observaciones'],
+        sample: [
+            ['Edificio Central', 'Av. 20 de Octubre', 'Oficinas Administrativas'],
+            ['Almacén El Alto', 'Calle 5 La Ceja', 'Depósito de activos'],
+        ]
+    },
+    {
+        id: 'auxiliares',
+        label: 'Catálogo: Auxiliares',
+        icon: Zap,
+        color: 'text-rose-600',
+        bg: 'bg-rose-50',
+        border: 'border-rose-300',
+        fields: ['nombre'],
+        sample: [
+            ['Muebles de Oficina'],
+            ['Equipos de Computación'],
+            ['Vehículos'],
+        ]
+    },
+    {
+        id: 'grupos',
+        label: 'Catálogo: Grupos Contables',
+        icon: Settings2,
+        color: 'text-cyan-600',
+        bg: 'bg-cyan-50',
+        border: 'border-cyan-300',
+        fields: ['nombre', 'vida_util', 'observaciones'],
+        sample: [
+            ['Maquinaria y Equipo', '8', 'Vigencia según norma'],
+            ['Herramientas General', '4', 'Uso rudo'],
+        ]
+    }
 ];
 
 const SEPARATORS = [
@@ -124,12 +178,17 @@ const MigracionView = ({ authFetch = fetch }) => {
             const firstDataRow = lines.length > 1 ? split(lines[1]) : [];
 
             // Auto-asignación inteligente de cabeceras si faltan o si la cabecera es el basura "datos"
-            if (expectedFields && (headers.length < firstDataRow.length || headers[0].toLowerCase() === 'datos')) {
+            const firstRowRaw = split(lines[0]);
+            const isSingleColNoHeader = expectedFields && expectedFields.length === 1 && firstRowRaw.length === 1 && firstRowRaw[0].toLowerCase() !== expectedFields[0].toLowerCase();
+
+            if (expectedFields && (headers.length < firstDataRow.length || headers[0].toLowerCase() === 'datos' || isSingleColNoHeader)) {
                 const colsCount = Math.max(headers.length, firstDataRow.length);
                 headers = expectedFields.slice(0, colsCount);
 
-                // Si la fila "datos" era solo 1 palabra, la saltamos. Sino, es info real.
-                if (split(lines[0]).length <= 1 && lines[0].toLowerCase().includes('datos')) {
+                // Si detectamos que no hay cabecera (es info real), empezamos desde la fila 0
+                if (isSingleColNoHeader) {
+                    dataStartIndex = 0;
+                } else if (split(lines[0]).length <= 1 && lines[0].toLowerCase().includes('datos')) {
                     dataStartIndex = 1;
                 } else {
                     dataStartIndex = 0;

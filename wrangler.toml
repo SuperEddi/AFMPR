@@ -3,9 +3,6 @@ name = "activosvt1"
 compatibility_date = "2024-03-01"
 pages_build_output_dir = "dist"
 
-[vars]
-ADMIN_PASSWORD = "6925*"
-
 [[d1_databases]]
 binding = "DB"
 database_name = "detalle_activos_tierras"
@@ -22,6 +19,18 @@ migrations_dir = "sql"
 binding = "DB_PRESIDENCIA" # Este nombre debe ser exacto
 database_name = "db_presidencia_activos"
 database_id = "7447ca5c-b339-468d-83ca-25d4042eb01c"
+migrations_dir = "sql"
+
+[[d1_databases]]
+binding = "DB_CULTURAS"
+database_name = "db_culturas_activos"
+database_id = "a260252f-9b86-446e-ab4b-f3885b6b5c38"
+migrations_dir = "sql"
+
+[[d1_databases]]
+binding = "DB_VICEPRESIDENCIA"
+database_name = "db_vicepresidencia_activos"
+database_id = "12512e04-7583-495a-be25-3a0ff29a0b10"
 migrations_dir = "sql"
 
 [[kv_namespaces]]

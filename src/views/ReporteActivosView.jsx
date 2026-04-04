@@ -63,8 +63,9 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
     const filtered = activos.filter(a =>
         (a.codigo_activo || '').toLowerCase().includes(filter.toLowerCase()) ||
         (a.descripcion || '').toLowerCase().includes(filter.toLowerCase()) ||
-        (a.serie || '').toLowerCase().includes(filter.toLowerCase()) ||
-        (a.responsable || '').toLowerCase().includes(filter.toLowerCase())
+        (a.usuario_nombre || '').toLowerCase().includes(filter.toLowerCase()) ||
+        (a.edificio || '').toLowerCase().includes(filter.toLowerCase()) ||
+        (a.oficina || '').toLowerCase().includes(filter.toLowerCase())
     );
 
     /* ── Exportar a Excel (.xlsx formateado) ── */
@@ -87,14 +88,15 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
             sheetName: cfg.label,
             title: `REPORTE DE ${cfg.label.toUpperCase()} — MINISTERIO DE LA PRESIDENCIA`,
             subtitle: `Fecha: ${fechaHoy}  ·  Total registros: ${filtered.length}`,
-            columns: ['N°', 'Código Activo', 'Descripción', 'Serie / Modelo', 'Estado', 'Responsable / Custodio', 'Institución'],
+            columns: ['N°', 'Código Activo', 'Descripción', 'Ubicación / Piso', 'Oficina', 'Estado', 'Responsable / Custodio', 'Institución'],
             rows: filtered.map((a, i) => [
                 i + 1,
                 a.codigo_activo || '',
                 a.descripcion || '',
-                a.serie || 'SIN SERIE',
+                [a.edificio, a.piso ? `Piso ${a.piso}` : ''].filter(Boolean).join(' - ') || '—',
+                a.oficina || '—',
                 a.estado_actual || '',
-                a.responsable || 'SIN ASIGNAR',
+                a.usuario_nombre || 'SIN ASIGNAR',
                 a.institucion || '',
             ]),
             headerColor: COLOR_HEADER[cfg.color] || COLOR_HEADER.blue,
@@ -140,7 +142,7 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                     type="text"
-                    placeholder="Filtrar por código, descripción, serie o responsable..."
+                    placeholder="Filtrar por código, descripción, ubicación o responsable..."
                     className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-slate-400"
                     value={filter}
                     onChange={e => setFilter(e.target.value)}
@@ -168,7 +170,7 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
                                     <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>#</th>
                                     <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>Código</th>
                                     <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>Descripción</th>
-                                    <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>Serie / Modelo</th>
+                                    <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>Lugar / Ubicación</th>
                                     <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>Estado</th>
                                     <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>Responsable</th>
                                 </tr>
@@ -190,8 +192,9 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
                                         <td className="px-3 py-2 text-xs text-slate-700 max-w-sm">
                                             <div className="leading-relaxed break-words" title={a.descripcion}>{a.descripcion}</div>
                                         </td>
-                                        <td className="px-3 py-2 text-xs text-slate-500 font-mono">
-                                            {a.serie || <span className="text-slate-300">—</span>}
+                                        <td className="px-3 py-2 text-[10px] text-slate-500 font-semibold italic">
+                                            {a.edificio ? <span className="text-slate-700 font-bold block mb-0.5 uppercase tracking-tighter not-italic leading-tight">{a.edificio}</span> : ''}
+                                            {a.oficina ? `${a.oficina} (P${a.piso})` : '—'}
                                         </td>
                                         <td className="px-3 py-2">
                                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${a.estado_actual === 'Asignado' ? 'bg-blue-50 text-blue-700 border-blue-100' :
@@ -203,8 +206,8 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
                                             </span>
                                         </td>
                                         <td className="px-3 py-2">
-                                            {a.responsable
-                                                ? <span className="text-xs font-semibold text-slate-700">{a.responsable}</span>
+                                            {a.usuario_nombre
+                                                ? <span className="text-xs font-semibold text-slate-700">{a.usuario_nombre}</span>
                                                 : <span className="text-[10px] text-slate-300 italic">Sin asignar</span>
                                             }
                                         </td>
@@ -244,9 +247,15 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
                                         }`}>{a.estado_actual}</span>
                                 </div>
                                 <div className="text-[11px] text-slate-600 leading-tight">{a.descripcion}</div>
+                                <div className="flex gap-2">
+                                    {a.oficina && (
+                                        <span className="text-[9px] text-slate-400 font-bold bg-slate-50 px-1.5 rounded border border-slate-100">
+                                            📍 {a.oficina}
+                                        </span>
+                                    )}
+                                </div>
                                 <div className="flex gap-3 text-[10px] text-slate-400">
-                                    <span className="font-mono">{a.serie || 'Sin serie'}</span>
-                                    {a.responsable && <span className="font-semibold text-slate-500">{a.responsable}</span>}
+                                    {a.usuario_nombre && <span className="font-semibold text-slate-500">{a.usuario_nombre}</span>}
                                 </div>
                             </div>
                         ))}

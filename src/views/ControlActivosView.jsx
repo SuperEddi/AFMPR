@@ -310,11 +310,11 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
         const rows = [];
         // Encontrados
         controlledActivos.forEach(a => {
-            rows.push(['✓ ENCONTRADO', a.codigo_activo, a.descripcion || '', a.serie || '', a.estado_actual || '', '', assetObservations[a.id] || '']);
+            rows.push(['✓ ENCONTRADO', a.codigo_activo, a.descripcion || '', a.estado_actual || '', '', assetObservations[a.id] || '']);
         });
         // Faltantes
         pending.forEach(a => {
-            rows.push(['✗ FALTANTE', a.codigo_activo, a.descripcion || '', a.serie || '', a.estado_actual || '', '', '']);
+            rows.push(['✗ FALTANTE', a.codigo_activo, a.descripcion || '', a.estado_actual || '', '', '']);
             if (assetObservations[a.id]) {
                 rows.push(['', '', `MOTIVO/OBS: ${assetObservations[a.id]}`, '', '', '', '']);
             } else {
@@ -323,7 +323,7 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
         });
         // Sobrantes / Ajenos
         surplusActivos.forEach(a => {
-            rows.push([a.warning ? '⚠ AJENO' : '⬡ SOBRANTE', a.codigo_activo, a.descripcion || '', a.serie || '', a.estado_actual || '', a.otherResp || '', assetObservations[a.id] || '']);
+            rows.push([a.warning ? '⚠ AJENO' : '⬡ SOBRANTE', a.codigo_activo, a.descripcion || '', a.estado_actual || '', a.otherResp || '', assetObservations[a.id] || '']);
         });
 
         await exportToExcel({
@@ -331,7 +331,7 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
             sheetName: 'Auditoría',
             title: `INFORME DE AUDITORÍA — ${selectedUser.nombre_completo.toUpperCase()}`,
             subtitle: `CI: ${selectedUser.ci}  ·  Cargo: ${selectedUser.cargo || 'N/A'}  ·  Fecha: ${fechaHoy}  ·  Correctos: ${controlledActivos.length}  Faltantes: ${pending.length}  Sobrantes: ${surplusActivos.length}`,
-            columns: ['Estado Auditoría', 'Código Activo', 'Descripción', 'Serie', 'Estado Sistema', 'Responsable Actual (si ajeno)', 'Observación'],
+            columns: ['Estado Auditoría', 'Código Activo', 'Descripción', 'Estado Sistema', 'Responsable Actual (si ajeno)', 'Observación'],
             rows,
             headerColor: 'FF1A237E',
             accentColor: 'FFE8EAF6',
@@ -407,7 +407,7 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
 
             // ─── TÍTULO ──────────────────────────────────────────
             doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0, 0, 0);
-            doc.text(`INFORME DE AUDITORÍA FÍSICA DE ACTIVOS`, PW / 2, y, { align: 'center' });
+            doc.text(`RELEVAMIENTO DE ACTIVOS FIJOS`, PW / 2, y, { align: 'center' });
             y += 8;
 
             // ─── DATOS FUNCIONARIO ────────────────────────────────

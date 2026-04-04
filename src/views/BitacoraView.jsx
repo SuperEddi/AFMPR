@@ -16,8 +16,11 @@ const fmtDate = (d) => {
 const getInstitutionStyle = (inst) => {
     const i = (inst || '').toUpperCase();
     if (i === 'TIERRAS') return 'bg-emerald-50 text-emerald-600 border-emerald-100';
-    if (i === 'JUSTICIA') return 'bg-amber-50 text-amber-600 border-amber-100';
-    return 'bg-blue-50 text-blue-600 border-blue-100';
+    if (i === 'JUSTICIA') return 'bg-blue-50 text-blue-600 border-blue-100';
+    if (i === 'PRESIDENCIA') return 'bg-amber-50 text-amber-600 border-amber-100';
+    if (i === 'CULTURAS') return 'bg-indigo-50 text-indigo-600 border-indigo-100';
+    if (i === 'VICEPRESIDENCIA') return 'bg-rose-50 text-rose-600 border-rose-100';
+    return 'bg-slate-50 text-slate-600 border-slate-100';
 };
 
 const BitacoraView = ({ authFetch }) => {

@@ -1,18 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Modal from '../components/Modal';
+import QuickAddSelect from '../components/QuickAddSelect';
+import QuickRegisterModal from '../components/QuickRegisterModal';
 import {
     ClipboardList, Package, CheckCircle, UserPlus,
     Search, ChevronRight, Undo2,
     Trash2, AlertCircle, FileText, Camera, Eye, X as XIcon, ZoomIn,
-    User, MapPin, PlusCircle, Printer, Hash, Briefcase, Building2, FilePlus
+    User, MapPin, PlusCircle, Printer, Hash, Briefcase, Building2, FilePlus, Archive
 } from 'lucide-react';
 import { AppDialog, useDialog } from '../components/AppDialog';
 
 // ─── Sub-componente: Devolución con Reasignación por activo ─────────────────
-const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleActivoDevolucion, seleccionarTodos, reasignaciones, setReasignacion, usuarios, authFetch, fetchUsuarios }) => {
+const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleActivoDevolucion, seleccionarTodos, reasignaciones, setReasignacion, usuarios, authFetch, fetchUsuarios, catalogos, onRegisterRequest }) => {
     const [busquedas, setBusquedas] = useState({});       // { activoId: 'texto' }
     const [creandoPara, setCreandoPara] = useState(null);  // activoId para el que se crea user
-    const [nuevoUser, setNuevoUser] = useState({ nombre_completo: '', ci: '', cargo: '', unidad: '', oficina: '', piso: '' });
+    const [nuevoUser, setNuevoUser] = useState({ nombre_completo: '', ci: '', cargo: '', cat_unidad_id: '', oficinas_ids: [] });
     const [guardando, setGuardando] = useState(false);
     const { showAlert: subShowAlert, dialogProps: subDialogProps } = useDialog();
     const [filtroActivos, setFiltroActivos] = useState('');
@@ -32,7 +34,7 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
                 setReasignacion(activoId, data.user);
                 fetchUsuarios();
                 setCreandoPara(null);
-                setNuevoUser({ nombre_completo: '', ci: '', cargo: '', unidad: '', oficina: '', piso: '' });
+                setNuevoUser({ nombre_completo: '', ci: '', cargo: '', cat_unidad_id: '', oficinas_ids: [] });
             } else { await subShowAlert(data.error || 'Error al crear responsable.', { title: 'Error', type: 'error' }); }
         } catch { await subShowAlert('Error de conexión.', { title: 'Error de red', type: 'error' }); } finally { setGuardando(false); }
     };
@@ -104,9 +106,39 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
                                                 <input placeholder="Nombre completo *" className="col-span-2 px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white" value={nuevoUser.nombre_completo} onChange={e => setNuevoUser(p => ({ ...p, nombre_completo: e.target.value }))} />
                                                 <input placeholder="CI *" className="px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white" value={nuevoUser.ci} onChange={e => setNuevoUser(p => ({ ...p, ci: e.target.value }))} />
                                                 <input placeholder="Cargo" className="px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white" value={nuevoUser.cargo} onChange={e => setNuevoUser(p => ({ ...p, cargo: e.target.value }))} />
-                                                <input placeholder="Unidad" className="col-span-2 px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white" value={nuevoUser.unidad} onChange={e => setNuevoUser(p => ({ ...p, unidad: e.target.value }))} />
-                                                <input placeholder="Oficina" className="px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white" value={nuevoUser.oficina} onChange={e => setNuevoUser(p => ({ ...p, oficina: e.target.value }))} />
-                                                <input placeholder="Piso" className="px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white" value={nuevoUser.piso} onChange={e => setNuevoUser(p => ({ ...p, piso: e.target.value }))} />
+                                                <div className="col-span-2 space-y-2">
+                                                    <label className="text-[9px] font-bold text-slate-400 uppercase">Ubicación Física (Edificio)</label>
+                                                    <QuickAddSelect
+                                                        options={catalogos.ubicaciones}
+                                                        value={nuevoUser.ubicacion_fisica_id}
+                                                        onChange={id => setNuevoUser(p => ({ ...p, ubicacion_fisica_id: id, cat_unidad_id: '' }))}
+                                                        onRegisterRequest={val => onRegisterRequest('ubicacion', val, { target: 'user' })}
+                                                        placeholder="Buscar o registrar Edificio..."
+                                                    />
+                                                </div>
+                                                <div className="col-span-2 space-y-2">
+                                                    <label className="text-[9px] font-bold text-slate-400 uppercase">Unidad</label>
+                                                    <QuickAddSelect
+                                                        options={catalogos.unidades.filter(u => !nuevoUser.ubicacion_fisica_id || u.ubicacion_fisica_id === Number(nuevoUser.ubicacion_fisica_id))}
+                                                        value={nuevoUser.cat_unidad_id}
+                                                        onChange={id => setNuevoUser(p => ({ ...p, cat_unidad_id: id }))}
+                                                        onRegisterRequest={val => onRegisterRequest('unidad', val, { target: 'user', ubicacion_fisica_id: nuevoUser.ubicacion_fisica_id })}
+                                                        placeholder="Buscar o registrar Unidad..."
+                                                        disabled={!nuevoUser.ubicacion_fisica_id}
+                                                    />
+                                                </div>
+                                                <div className="col-span-2 max-h-24 overflow-y-auto border border-slate-100 rounded-lg p-2 bg-white">
+                                                    <p className="text-[8px] font-black uppercase text-slate-400 mb-1">Oficinas</p>
+                                                    {catalogos.oficinas.map(of => (
+                                                        <label key={of.id} className="flex items-center gap-2 text-[10px] py-0.5 cursor-pointer hover:bg-slate-50">
+                                                            <input type="checkbox" checked={nuevoUser.oficinas_ids.includes(of.id)} onChange={e => {
+                                                                const ids = e.target.checked ? [...nuevoUser.oficinas_ids, of.id] : nuevoUser.oficinas_ids.filter(x => x !== of.id);
+                                                                setNuevoUser(p => ({ ...p, oficinas_ids: ids }));
+                                                            }} />
+                                                            {of.nombre}
+                                                        </label>
+                                                    ))}
+                                                </div>
                                             </div>
                                             <div className="flex gap-2 justify-end">
                                                 <button onClick={() => setCreandoPara(null)} className="text-[10px] font-bold text-slate-400 px-3 py-1">Cancelar</button>
@@ -138,7 +170,7 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
                                                 </div>
                                             )}
                                             {noHayResultados && (
-                                                <button onClick={() => { setCreandoPara(a.id); setNuevoUser({ nombre_completo: busq, ci: '', cargo: '', unidad: '', oficina: '', piso: '' }); }} className="flex items-center gap-2 w-full px-3 py-2 text-[10px] font-black text-blue-600 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors">
+                                                <button onClick={() => { setCreandoPara(a.id); setNuevoUser({ nombre_completo: busq, ci: '', cargo: '', cat_unidad_id: '', oficinas_ids: [] }); }} className="flex items-center gap-2 w-full px-3 py-2 text-[10px] font-black text-blue-600 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors">
                                                     <UserPlus size={13} /> No encontrado — Crear nuevo responsable "{busq}"
                                                 </button>
                                             )}
@@ -158,9 +190,9 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
 
 const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, currentUser }) => {
     const [tipo, setTipo] = useState(tipoProp);
-    // ... (rest of the state remains the same)
     const [step, setStep] = useState(1);
     const [usuarios, setUsuarios] = useState([]);
+    const [catalogos, setCatalogos] = useState({ ubicaciones: [], unidades: [], oficinas: [], pisos: [], auxiliares: [], grupos: [] });
     const [activosList, setActivosList] = useState([]);
     const [selectedUser, setSelectedUser] = useState(null);
     const [activosSeleccionados, setActivosSeleccionados] = useState([]);
@@ -173,7 +205,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
     const [showSuggestions, setShowSuggestions] = useState(false);
     const searchRef = useRef(null);
     const [isNewUser, setIsNewUser] = useState(false);
-    const [newUserData, setNewUserData] = useState({ nombre_completo: '', ci: '', cargo: '', unidad: '', oficina: '', piso: '' });
+    const [newUserData, setNewUserData] = useState({ nombre_completo: '', ci: '', cargo: '', ubicacion_fisica_id: '', cat_unidad_id: '', oficinas_ids: [] });
     const [reasignaciones, setReasignaciones] = useState({});
     const [printedActas, setPrintedActas] = useState([]);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -183,11 +215,16 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
     const [showPreview, setShowPreview] = useState(false);
     const [previewLoading, setPreviewLoading] = useState(false);
     const [showNewAssetModal, setShowNewAssetModal] = useState(false);
-    const [newAssetData, setNewAssetData] = useState({ codigo_activo: '', descripcion: '', serie: '', estado_actual: 'Disponible' });
+    const [newAssetData, setNewAssetData] = useState({
+        codigo_activo: '', descripcion: '', estado_actual: 'Disponible',
+        ubicacion_fisica_id: '', cat_unidad_id: '', cat_oficina_id: '', cat_piso_id: '',
+        cat_auxiliar_id: '', cat_grupo_contable_id: ''
+    });
     const [assetSaving, setAssetSaving] = useState(false);
+    const [quickReg, setQuickReg] = useState({ isOpen: false, type: '', name: '', context: {} });
     const [printing, setPrinting] = useState(false);
     const [isEditingLocation, setIsEditingLocation] = useState(false);
-    const [locationEditData, setLocationEditData] = useState({ unidad: '', oficina: '', piso: '' });
+    const [locationEditData, setLocationEditData] = useState({ cat_unidad_id: '', cat_oficina_id: '', cat_piso_id: '' });
     const [locationSaving, setLocationSaving] = useState(false);
     const [searchMode, setSearchMode] = useState('all'); // 'all', 'codigo', 'descripcion'
     const [showAppendModal, setShowAppendModal] = useState(false);
@@ -198,6 +235,65 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
     const [agrupados, setAgrupados] = useState([]);
     const [devUserSearch, setDevUserSearch] = useState('');
     const [selectedUbicDevolucion, setSelectedUbicDevolucion] = useState(null); // { persona, ubicacion }
+
+    const handleRegisterRequest = (tipo, nombre, customContext = null) => {
+        let context = {};
+        if (customContext) {
+            context = customContext;
+        } else {
+            if (tipo === 'unidad') context = { ubicacion_fisica_id: newAssetData.ubicacion_fisica_id };
+            if (tipo === 'oficina') context = { unidad_id: newAssetData.cat_unidad_id };
+        }
+        setQuickReg({ isOpen: true, type: tipo, name: nombre, context });
+    };
+
+    const handleQuickSave = async (tipo, data) => {
+        try {
+            let url = '';
+            if (tipo === 'ubicacion') url = '/api/catalogos/ubicaciones';
+            if (tipo === 'unidad') url = '/api/catalogos/unidades';
+            if (tipo === 'oficina') url = '/api/catalogos/oficinas';
+            if (tipo === 'piso') url = '/api/catalogos/pisos';
+
+            const res = await authFetch(url, {
+                method: 'POST',
+                body: JSON.stringify({ ...data, registrado_por: currentUser?.nombre })
+            });
+
+            if (res.ok) {
+                const newItem = await res.json();
+                await fetchCatalogos();
+
+                const fieldMap = {
+                    'ubicacion': 'ubicacion_fisica_id',
+                    'unidad': 'cat_unidad_id',
+                    'oficina': 'cat_oficina_id',
+                    'piso': 'cat_piso_id'
+                };
+
+                // Si el registro venía con un target específico
+                if (quickReg.context?.target === 'user') {
+                    // El hijo (DevolucionConReasignacion) no puede ser actualizado directamente desde aquí fácilmente
+                    // Emitimos el evento global para que todos los interesados sepan que hay data nueva
+                    window.dispatchEvent(new CustomEvent('data-updated'));
+                } else {
+                    setNewAssetData(prev => ({ ...prev, [fieldMap[tipo]]: newItem.id }));
+                }
+            } else {
+                const err = await res.json();
+                throw new Error(err.error || "Error al registrar");
+            }
+        } catch (e) {
+            throw e;
+        }
+    };
+
+    const fetchCatalogos = useCallback(async () => {
+        try {
+            const res = await authFetch('/api/catalogos');
+            if (res.ok) setCatalogos(await res.json());
+        } catch (err) { }
+    }, [authFetch]);
 
     const fetchUsuarios = useCallback(() => {
         authFetch('/api/usuarios').then(r => r.json()).then(setUsuarios).catch(() => { });
@@ -232,9 +328,12 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                 .then(d => { setActivosList(Array.isArray(d) ? d : []); setLoading(false); })
                 .catch(() => { setLoading(false); });
         }
-    }, [step, tipo, selectedUbicDevolucion, selectedUser]);
+    }, [step, tipo, selectedUbicDevolucion, selectedUser, authFetch]);
 
-    useEffect(() => { fetchUsuarios(); }, [fetchUsuarios]);
+    useEffect(() => {
+        fetchCatalogos();
+        fetchUsuarios();
+    }, [fetchUsuarios, fetchCatalogos]);
     useEffect(() => { if (tipo === 'Devolución') fetchAgrupados(); }, [tipo, fetchAgrupados]);
     useEffect(() => { fetchActivosDisponibles(); }, [fetchActivosDisponibles]);
 
@@ -314,9 +413,9 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                         usuario_id: item.usuario_id,
                         activos_seleccionados: item.activos,
                         observaciones,
-                        unidad: selectedUser?.unidad,
-                        oficina: selectedUser?.oficina,
-                        piso: selectedUser?.piso,
+                        cat_unidad_id: selectedUser?.cat_unidad_id,
+                        cat_oficina_id: selectedUser?.cat_oficina_id,
+                        cat_piso_id: selectedUser?.cat_piso_id,
                         appendToActaId: item.appendId,
                         realizado_por: currentUser?.nombre,
                         institucion: selectedUser?.institucion
@@ -362,11 +461,13 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
             });
             const data = await res.json();
             if (res.ok) {
-                const newId = data.id || data.activo?.id;
-                const newAsset = { ...newAssetData, ...(data.activo || {}), id: newId };
                 setActivosSeleccionados(prev => [...prev, { ...newAsset, estado_fisico: 'Regular' }]);
                 setShowNewAssetModal(false);
-                setNewAssetData({ codigo_activo: '', descripcion: '', serie: '', estado_actual: 'Disponible' });
+                setNewAssetData({
+                    codigo_activo: '', descripcion: '', estado_actual: 'Disponible',
+                    cat_unidad_id: '', cat_oficina_id: '', cat_piso_id: '',
+                    cat_auxiliar_id: '', cat_grupo_contable_id: ''
+                });
                 fetchActivosDisponibles();
                 window.dispatchEvent(new CustomEvent('data-updated'));
             } else {
@@ -382,7 +483,14 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
     const handleSnapshotLocation = () => {
         // En lugar de guardar en la DB global, actualizamos el estado local del objeto usuario
         // para que se use en la creación del acta.
-        const updatedUser = { ...selectedUser, ...locationEditData };
+        const updatedUser = {
+            ...selectedUser,
+            ...locationEditData,
+            // Mantener compatibilidad visual (opcional si queremos ver los nombres de inmediato)
+            unidad: catalogos.unidades.find(u => String(u.id) === String(locationEditData.cat_unidad_id))?.nombre || selectedUser?.unidad,
+            oficina: catalogos.oficinas.find(o => String(o.id) === String(locationEditData.cat_oficina_id))?.nombre || selectedUser?.oficina,
+            piso: catalogos.pisos.find(p => String(p.id) === String(locationEditData.cat_piso_id))?.numero || selectedUser?.piso
+        };
         setSelectedUser(updatedUser);
         setIsEditingLocation(false);
     };
@@ -390,9 +498,9 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
     const toggleLocationEdit = () => {
         if (!isEditingLocation) {
             setLocationEditData({
-                unidad: selectedUser?.unidad || '',
-                oficina: selectedUser?.oficina || '',
-                piso: selectedUser?.piso || ''
+                cat_unidad_id: selectedUser?.cat_unidad_id || '',
+                cat_oficina_id: selectedUser?.cat_oficina_id || '',
+                cat_piso_id: selectedUser?.cat_piso_id || ''
             });
         }
         setIsEditingLocation(!isEditingLocation);
@@ -488,7 +596,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                     ['FECHA:', fechaStr],
                     ['RESPONSABLE:', nombre.toUpperCase()],
                     ['CI / CARGO:', `${ci} – ${cargo}`],
-                    ['UBICACIÓN:', `${unidad} / ${oficina} (Piso: ${piso})`],
+                    ['UBICACIÓN:', `${dataRes.ubicacion_fisica || ''} / ${unidad} / ${oficina} (Piso: ${piso})`],
                 ],
                 theme: 'plain',
                 styles: { font: 'helvetica', fontSize: 11, cellPadding: 1.5, textColor: [0, 0, 0] },
@@ -593,7 +701,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
         }).slice(0, 8)
         : [];
 
-    const resetForm = () => { setStep(1); setSelectedUser(null); setActivosSeleccionados([]); setObservaciones(''); setIsNewUser(false); setNewUserData({ nombre_completo: '', ci: '', cargo: '', unidad: '', oficina: '', piso: '' }); setSearchTerm(''); setUserSearch(''); setReasignaciones({}); setPrintedActas([]); setBarcodeSearch(''); setSelectedUbicDevolucion(null); setDevUserSearch(''); };
+    const resetForm = () => { setStep(1); setSelectedUser(null); setActivosSeleccionados([]); setObservaciones(''); setIsNewUser(false); setNewUserData({ nombre_completo: '', ci: '', cargo: '', cat_unidad_id: '', oficinas_ids: [] }); setSearchTerm(''); setUserSearch(''); setReasignaciones({}); setPrintedActas([]); setBarcodeSearch(''); setSelectedUbicDevolucion(null); setDevUserSearch(''); };
 
     const setReasignacion = (activoId, usuario) => {
         setReasignaciones(prev => { const n = { ...prev }; if (usuario) n[activoId] = usuario; else delete n[activoId]; return n; });
@@ -718,6 +826,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                                                     <MapPin size={12} className="text-slate-400 flex-shrink-0" />
                                                                     <div className="min-w-0">
                                                                         <span className="text-xs font-bold text-slate-700 truncate block">
+                                                                            {ubic.edificio ? <span className="text-indigo-600 mr-1">{ubic.edificio} —</span> : ''}
                                                                             {ubic.oficina || '—'} {ubic.piso ? `· P${ubic.piso}` : ''}
                                                                         </span>
                                                                         <span className="text-[10px] text-slate-400 font-medium truncate block">{ubic.unidad || 'Sin unidad'}</span>
@@ -794,28 +903,34 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                     </div>
                                     <div>
                                         <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block flex items-center gap-1.5"><Building2 size={12} /> Unidad / Departamento</label>
-                                        <input
+                                        <select
                                             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
-                                            value={newUserData.unidad}
-                                            onChange={e => setNewUserData(p => ({ ...p, unidad: e.target.value }))}
-                                        />
+                                            value={newUserData.cat_unidad_id}
+                                            onChange={e => setNewUserData(p => ({ ...p, cat_unidad_id: e.target.value }))}
+                                        >
+                                            <option value="">Seleccionar Unidad...</option>
+                                            {catalogos.unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                                        </select>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block flex items-center gap-1.5"><MapPin size={12} /> Oficina</label>
-                                            <input
-                                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
-                                                value={newUserData.oficina}
-                                                onChange={e => setNewUserData(p => ({ ...p, oficina: e.target.value }))}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block flex items-center gap-1.5">Piso</label>
-                                            <input
-                                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
-                                                value={newUserData.piso}
-                                                onChange={e => setNewUserData(p => ({ ...p, piso: e.target.value }))}
-                                            />
+                                    <div className="space-y-4">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block flex items-center gap-1.5"><Building2 size={12} /> Oficinas (Seleccione una o varias)</label>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-3 border border-slate-100 rounded-xl bg-slate-50/50">
+                                            {catalogos.oficinas.map(of => (
+                                                <label key={of.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-white transition-colors cursor-pointer border border-transparent hover:border-slate-100">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                        checked={newUserData.oficinas_ids?.includes(of.id)}
+                                                        onChange={e => {
+                                                            const ids = e.target.checked
+                                                                ? [...(newUserData.oficinas_ids || []), of.id]
+                                                                : (newUserData.oficinas_ids || []).filter(x => x !== of.id);
+                                                            setNewUserData(p => ({ ...p, oficinas_ids: ids }));
+                                                        }}
+                                                    />
+                                                    <span className="text-xs font-medium text-slate-700">{of.nombre}</span>
+                                                </label>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>
@@ -846,16 +961,25 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-current border-dotted">
                                         <div>
                                             <label className="text-[9px] font-black uppercase opacity-60 block mb-1">Unidad</label>
-                                            <input className="w-full px-2 py-1.5 text-xs rounded border border-slate-200 bg-white" value={locationEditData.unidad} onChange={e => setLocationEditData(p => ({ ...p, unidad: e.target.value }))} />
+                                            <select className="w-full px-2 py-1.5 text-xs rounded border border-slate-200 bg-white" value={locationEditData.cat_unidad_id} onChange={e => setLocationEditData(p => ({ ...p, cat_unidad_id: e.target.value }))}>
+                                                <option value="">Unidad...</option>
+                                                {catalogos.unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                                            </select>
                                         </div>
                                         <div>
                                             <label className="text-[9px] font-black uppercase opacity-60 block mb-1">Oficina</label>
-                                            <input className="w-full px-2 py-1.5 text-xs rounded border border-slate-200 bg-white" value={locationEditData.oficina} onChange={e => setLocationEditData(p => ({ ...p, oficina: e.target.value }))} />
+                                            <select className="w-full px-2 py-1.5 text-xs rounded border border-slate-200 bg-white" value={locationEditData.cat_oficina_id} onChange={e => setLocationEditData(p => ({ ...p, cat_oficina_id: e.target.value }))}>
+                                                <option value="">Oficina...</option>
+                                                {catalogos.oficinas.map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+                                            </select>
                                         </div>
                                         <div className="flex gap-2">
                                             <div className="flex-1">
                                                 <label className="text-[9px] font-black uppercase opacity-60 block mb-1">Piso</label>
-                                                <input className="w-full px-2 py-1.5 text-xs rounded border border-slate-200 bg-white" value={locationEditData.piso} onChange={e => setLocationEditData(p => ({ ...p, piso: e.target.value }))} />
+                                                <select className="w-full px-2 py-1.5 text-xs rounded border border-slate-200 bg-white" value={locationEditData.cat_piso_id} onChange={e => setLocationEditData(p => ({ ...p, cat_piso_id: e.target.value }))}>
+                                                    <option value="">Piso...</option>
+                                                    {catalogos.pisos.map(p => <option key={p.id} value={p.id}>{p.numero}</option>)}
+                                                </select>
                                             </div>
                                             <button onClick={handleSnapshotLocation} className="mt-5 bg-slate-900 text-white p-1.5 rounded-lg">
                                                 <CheckCircle size={16} />
@@ -960,6 +1084,8 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                     usuarios={usuarios}
                                     authFetch={authFetch}
                                     fetchUsuarios={fetchUsuarios}
+                                    catalogos={catalogos}
+                                    onRegisterRequest={handleRegisterRequest}
                                 />
                             )}
                             <textarea placeholder="Observaciones..." className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm min-h-[80px]" value={observaciones} onChange={e => setObservaciones(e.target.value)} />
@@ -1091,17 +1217,93 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                 <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Descripción *</label>
                                 <textarea required className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={newAssetData.descripcion} onChange={e => setNewAssetData(p => ({ ...p, descripcion: e.target.value }))} />
                             </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Serie</label>
-                                <input className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={newAssetData.serie} onChange={e => setNewAssetData(p => ({ ...p, serie: e.target.value }))} />
-                            </div>
-                            <div>
+                            <div className="col-span-2">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Estado</label>
                                 <select className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={newAssetData.estado_actual} onChange={e => setNewAssetData(p => ({ ...p, estado_actual: e.target.value }))}>
                                     <option value="Disponible">Disponible</option>
                                     <option value="Asignado">Asignado</option>
                                     <option value="Mantenimiento">Mantenimiento</option>
                                 </select>
+                            </div>
+                            <div className="col-span-2 space-y-3 pt-2 border-t border-slate-50">
+                                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest block bg-slate-50 p-1.5 rounded-lg border border-slate-100 flex items-center gap-2">
+                                    <Archive size={14} className="text-indigo-600" /> Clasificación Contable
+                                </label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Grupo Contable</label>
+                                        <select
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            value={newAssetData.cat_grupo_contable_id || ''}
+                                            onChange={e => setNewAssetData(p => ({ ...p, cat_grupo_contable_id: e.target.value }))}
+                                        >
+                                            <option value="">— Sin Grupo —</option>
+                                            {catalogos.grupos.map(g => <option key={g.id} value={g.id}>{g.nombre}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Auxiliar</label>
+                                        <select
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            value={newAssetData.cat_auxiliar_id || ''}
+                                            onChange={e => setNewAssetData(p => ({ ...p, cat_auxiliar_id: e.target.value }))}
+                                        >
+                                            <option value="">— Sin Auxiliar —</option>
+                                            {catalogos.auxiliares.map(ax => <option key={ax.id} value={ax.id}>{ax.nombre}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="col-span-2 space-y-3 pt-2 border-t border-slate-50">
+                                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest block bg-slate-50 p-1.5 rounded-lg border border-slate-100 flex items-center gap-2">
+                                    <MapPin size={14} className="text-blue-600" /> Ubicación del Catálogo
+                                </label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="col-span-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block font-black text-blue-600">Ubicación Física (Edificio)</label>
+                                        <QuickAddSelect
+                                            options={catalogos.ubicaciones}
+                                            value={newAssetData.ubicacion_fisica_id}
+                                            onChange={id => setNewAssetData(p => ({ ...p, ubicacion_fisica_id: id, cat_unidad_id: '', cat_oficina_id: '' }))}
+                                            onRegisterRequest={val => handleRegisterRequest('ubicacion', val)}
+                                            placeholder="Buscar o registrar Edificio..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Unidad</label>
+                                        <QuickAddSelect
+                                            options={catalogos.unidades.filter(u => !newAssetData.ubicacion_fisica_id || u.ubicacion_fisica_id === Number(newAssetData.ubicacion_fisica_id))}
+                                            value={newAssetData.cat_unidad_id}
+                                            onChange={id => setNewAssetData(p => ({ ...p, cat_unidad_id: id, cat_oficina_id: '' }))}
+                                            onRegisterRequest={val => handleRegisterRequest('unidad', val)}
+                                            placeholder="Buscar o registrar Unidad..."
+                                            disabled={!newAssetData.ubicacion_fisica_id}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Oficina</label>
+                                        <QuickAddSelect
+                                            options={catalogos.oficinas.filter(o => !newAssetData.cat_unidad_id || o.unidad_id === Number(newAssetData.cat_unidad_id))}
+                                            value={newAssetData.cat_oficina_id}
+                                            onChange={id => setNewAssetData(p => ({ ...p, cat_oficina_id: id }))}
+                                            onRegisterRequest={val => handleRegisterRequest('oficina', val)}
+                                            placeholder="Buscar o registrar Oficina..."
+                                            disabled={!newAssetData.cat_unidad_id}
+                                        />
+                                    </div>
+                                    <div className="col-span-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Piso</label>
+                                        <QuickAddSelect
+                                            options={catalogos.pisos}
+                                            value={newAssetData.cat_piso_id}
+                                            onChange={id => setNewAssetData(p => ({ ...p, cat_piso_id: id }))}
+                                            onRegisterRequest={val => handleRegisterRequest('piso', val)}
+                                            labelField="numero"
+                                            placeholder="Buscar o registrar Piso..."
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div className="flex justify-end gap-3 pt-2">
@@ -1114,6 +1316,24 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                 </Modal>
             </div>
             <AppDialog {...dialogProps} />
+
+            <QuickRegisterModal
+                isOpen={quickReg.isOpen}
+                onClose={() => setQuickReg(p => ({ ...p, isOpen: false }))}
+                type={quickReg.type === 'ubicacion_user' ? 'ubicacion' : quickReg.type === 'unidad_user' ? 'unidad' : quickReg.type}
+                initialName={quickReg.name}
+                contextData={quickReg.context}
+                catalogos={catalogos}
+                onSave={async (tipo, data) => {
+                    await handleQuickSave(tipo, data);
+                    // Si el registro venía de DevolucionConReasignacion, necesitamos actualizar ese estado local también
+                    // Pero handleQuickSave actualiza newAssetData. 
+                    // Para DevolucionConReasignacion, es más complejo porque el estado está EN el componente hijo.
+                    // Usaremos el evento global para que refresque catálogos y el usuario lo seleccione manualmente o 
+                    // simplemente emitir el evento y que el hijo escuche.
+                    // Para simplificar, handleQuickSave actualiza catalogos via fetchCatalogos().
+                }}
+            />
         </>
     );
 };

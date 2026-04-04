@@ -36,6 +36,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen, currentUser, onLo
             items: [
                 { id: 'activos', label: 'Inventario', icon: Package, color: 'text-amber-400', activeBg: 'bg-amber-500/10', activeText: 'text-amber-400' },
                 { id: 'migraciones', label: 'Migraciones', icon: Database, color: 'text-violet-400', activeBg: 'bg-violet-500/10', activeText: 'text-violet-400' },
+                { id: 'catalogos', label: 'Catálogos', icon: Layers, color: 'text-indigo-400', activeBg: 'bg-indigo-500/10', activeText: 'text-indigo-400' },
             ]
         },
         {

@@ -5,8 +5,11 @@ import { AppDialog, useDialog } from '../components/AppDialog';
 const getInstitutionStyle = (inst) => {
     const i = (inst || '').toUpperCase();
     if (i === 'TIERRAS') return 'bg-emerald-50 text-emerald-600 border-emerald-100';
-    if (i === 'JUSTICIA') return 'bg-amber-50 text-amber-600 border-amber-100';
-    return 'bg-blue-50 text-blue-600 border-blue-100';
+    if (i === 'JUSTICIA') return 'bg-blue-50 text-blue-600 border-blue-100';
+    if (i === 'PRESIDENCIA') return 'bg-amber-50 text-amber-600 border-amber-100';
+    if (i === 'CULTURAS') return 'bg-indigo-50 text-indigo-600 border-indigo-100';
+    if (i === 'VICEPRESIDENCIA') return 'bg-rose-50 text-rose-600 border-rose-100';
+    return 'bg-slate-50 text-slate-600 border-slate-100';
 };
 
 const RoleBadge = ({ rol }) => {
@@ -98,7 +101,10 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
                 fetchUsers();
             } else {
                 const d = await res.json();
-                await showAlert(d.error || 'Error al guardar.', { type: 'error' });
+                await showAlert(d.message || d.error || 'Error al guardar.', {
+                    title: d.error || 'Error',
+                    type: 'error'
+                });
             }
         } catch { await showAlert('Error de conexión.', { type: 'error' }); }
         setSaving(false);
@@ -117,7 +123,10 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
             await showAlert('Cuenta desactivada correctamente.', { type: 'success' });
         } else {
             const d = await res.json();
-            await showAlert(d.error || 'Error al desactivar.', { type: 'error' });
+            await showAlert(d.message || d.error || 'Error al desactivar.', {
+                title: d.error || 'Error',
+                type: 'error'
+            });
         }
     };
 
@@ -317,10 +326,14 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
                             <div className="pt-2">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Registrar en bases de datos:</label>
                                 <div className="space-y-1.5">
-                                    {['TIERRAS', 'JUSTICIA', 'PRESIDENCIA'].map(inst => (
+                                    {['TIERRAS', 'JUSTICIA', 'PRESIDENCIA', 'CULTURAS', 'VICEPRESIDENCIA'].map(inst => (
                                         <label key={inst} className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer transition-all ${form.instituciones.includes(inst) ? 'border-amber-500 bg-amber-50/50' : 'border-slate-100 hover:bg-slate-50'}`}>
                                             <div className="flex items-center gap-2">
-                                                <div className={`w-2 h-2 rounded-full ${inst === 'TIERRAS' ? 'bg-emerald-500' : inst === 'JUSTICIA' ? 'bg-amber-500' : 'bg-blue-500'}`}></div>
+                                                <div className={`w-2 h-2 rounded-full ${inst === 'TIERRAS' ? 'bg-emerald-500' :
+                                                    inst === 'JUSTICIA' ? 'bg-blue-500' :
+                                                        inst === 'PRESIDENCIA' ? 'bg-amber-500' :
+                                                            inst === 'CULTURAS' ? 'bg-indigo-500' : 'bg-rose-500'
+                                                    }`}></div>
                                                 <span className="text-xs font-bold text-slate-700">{inst}</span>
                                             </div>
                                             <input

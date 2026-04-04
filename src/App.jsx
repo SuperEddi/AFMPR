@@ -10,6 +10,7 @@ import ReporteActivosView from './views/ReporteActivosView';
 import ControlActivosView from './views/ControlActivosView';
 import GestionAccesosView from './views/GestionAccesosView';
 import BitacoraView from './views/BitacoraView';
+import CatalogosView from './views/CatalogosView';
 import {
     Bell, Menu, Archive,
     LayoutDashboard, ClipboardCheck, BoxSelect, AlertTriangle, FilePlus2, ExternalLink,
@@ -31,13 +32,13 @@ function App() {
     const allowedInstitutions = React.useMemo(() => {
         if (!currentUser) return [];
         // Admin tiene acceso total
-        if (currentUser.rol === 'admin') return ['consolidado', 'tierras', 'justicia', 'presidencia'];
+        if (currentUser.rol === 'admin') return ['consolidado', 'tierras', 'justicia', 'presidencia', 'culturas', 'vicepresidencia'];
 
         // Técnicos solo ven lo que tienen asignado
         const insts = (currentUser.instituciones || []).map(i => i.toLowerCase());
 
-        // El modo CONSOLIDADO solo está disponible si tiene las 3 bases
-        if (insts.length === 3) return ['consolidado', ...insts];
+        // El modo CONSOLIDADO solo está disponible si tiene todas las bases
+        if (insts.length === 5) return ['consolidado', ...insts];
         return insts;
     }, [currentUser]);
 
@@ -207,22 +208,42 @@ function App() {
                 />
 
                 <main className={`flex-1 min-w-0 w-full max-w-[100vw] overflow-x-hidden transition-all duration-300 ${isSidebarOpen ? 'blur-sm pointer-events-none' : ''} lg:ml-64 p-2 sm:p-3 md:p-6`}>
-                    {/* Header */}
-                    <header className="flex justify-between items-center mb-4 sm:mb-5 bg-white p-2 sm:p-3 md:p-4 rounded-xl shadow-sm border border-slate-200">
-                        <div className="flex items-center gap-2 sm:gap-3">
-                            <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-1.5 sm:p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
-                                <Menu size={20} className="sm:w-[22px] sm:h-[22px]" />
+                    {/* ── HEADER ── */}
+                    <header className="flex justify-between items-center mb-3 sm:mb-5 bg-white px-3 py-2 sm:p-3 md:p-4 rounded-2xl shadow-sm border border-slate-200">
+                        {/* Izquierda: hamburger + logo móvil */}
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setIsSidebarOpen(true)}
+                                className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors active:scale-95"
+                            >
+                                <Menu size={20} />
                             </button>
-                            <div className="lg:hidden font-black text-blue-600 text-base sm:text-lg">
-                                AP
+                            <div className="lg:hidden">
+                                <span className="font-black text-indigo-600 text-sm tracking-tight">ACTIVOS</span>
+                                <span className="font-black text-slate-400 text-sm tracking-tight"> PRO</span>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2 md:gap-3">
-                            {/* Selector de Institución — dropdown en móvil, botones en escritorio */}
-                            {/* SELECT móvil */}
+
+                        {/* Derecha: selector institución + usuario */}
+                        <div className="flex items-center gap-2">
+
+                            {/* ── Selector móvil con color por institución ── */}
                             <div className="flex items-center gap-1.5 md:hidden">
+                                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${institution === 'tierras' ? 'bg-emerald-500' :
+                                        institution === 'justicia' ? 'bg-blue-500' :
+                                            institution === 'presidencia' ? 'bg-amber-500' :
+                                                institution === 'culturas' ? 'bg-violet-500' :
+                                                    institution === 'vicepresidencia' ? 'bg-rose-500' :
+                                                        'bg-slate-500'
+                                    }`} />
                                 <select
-                                    className="text-[11px] font-black border-2 border-indigo-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 shadow-sm"
+                                    className={`text-[11px] font-black border-2 rounded-xl px-2 py-1.5 bg-white focus:outline-none focus:ring-2 shadow-sm transition-all ${institution === 'tierras' ? 'border-emerald-200 text-emerald-700 focus:ring-emerald-300' :
+                                            institution === 'justicia' ? 'border-blue-200 text-blue-700 focus:ring-blue-300' :
+                                                institution === 'presidencia' ? 'border-amber-200 text-amber-700 focus:ring-amber-300' :
+                                                    institution === 'culturas' ? 'border-violet-200 text-violet-700 focus:ring-violet-300' :
+                                                        institution === 'vicepresidencia' ? 'border-rose-200 text-rose-700 focus:ring-rose-300' :
+                                                            'border-slate-200 text-slate-700 focus:ring-slate-300'
+                                        }`}
                                     value={institution}
                                     onChange={e => {
                                         setInstitution(e.target.value);
@@ -234,45 +255,56 @@ function App() {
                                     {allowedInstitutions.includes('tierras') && <option value="tierras">TIERRAS</option>}
                                     {allowedInstitutions.includes('justicia') && <option value="justicia">JUSTICIA</option>}
                                     {allowedInstitutions.includes('presidencia') && <option value="presidencia">PRESIDENCIA</option>}
+                                    {allowedInstitutions.includes('culturas') && <option value="culturas">CULTURAS</option>}
+                                    {allowedInstitutions.includes('vicepresidencia') && <option value="vicepresidencia">VICEPRESID.</option>}
                                 </select>
                                 {institution === 'presidencia' && (
-                                    <a
-                                        href="https://siaf-frontend.pages.dev/"
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="p-1.5 bg-indigo-600 text-white rounded-lg shadow-sm hover:bg-indigo-700 transition-colors"
-                                        title="Ir a SIAF"
-                                    >
-                                        <ExternalLink size={16} />
+                                    <a href="https://siaf-frontend.pages.dev/" target="_blank" rel="noopener noreferrer"
+                                        className="p-1.5 bg-indigo-600 text-white rounded-xl shadow-sm hover:bg-indigo-700 transition-colors active:scale-95"
+                                        title="Ir a SIAF">
+                                        <ExternalLink size={14} />
                                     </a>
                                 )}
                             </div>
-                            {/* Botones escritorio */}
+
+                            {/* ── Botones escritorio ── */}
                             <div className="hidden md:flex items-center gap-2">
-                                <div className="flex bg-slate-100 p-1.5 rounded-xl border-2 border-indigo-200 shadow-inner">
+                                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner gap-0.5">
                                     {allowedInstitutions.includes('consolidado') && (
-                                        <button
-                                            onClick={() => setInstitution('consolidado')}
-                                            className={`px-2.5 py-1 text-[11px] font-black rounded-lg transition-all ${institution === 'consolidado' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
-                                        >CONSOLIDADO</button>
+                                        <button onClick={() => setInstitution('consolidado')}
+                                            className={`px-2.5 py-1.5 text-[11px] font-black rounded-lg transition-all ${institution === 'consolidado' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-white hover:text-slate-700'}`}>
+                                            CONSOLIDADO
+                                        </button>
                                     )}
                                     {allowedInstitutions.includes('tierras') && (
-                                        <button
-                                            onClick={() => setInstitution('tierras')}
-                                            className={`px-2.5 py-1 text-[11px] font-black rounded-lg transition-all ${institution === 'tierras' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
-                                        >TIERRAS</button>
+                                        <button onClick={() => setInstitution('tierras')}
+                                            className={`px-2.5 py-1.5 text-[11px] font-black rounded-lg transition-all ${institution === 'tierras' ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20' : 'text-slate-500 hover:bg-white hover:text-emerald-700'}`}>
+                                            TIERRAS
+                                        </button>
                                     )}
                                     {allowedInstitutions.includes('justicia') && (
-                                        <button
-                                            onClick={() => setInstitution('justicia')}
-                                            className={`px-2.5 py-1 text-[11px] font-black rounded-lg transition-all ${institution === 'justicia' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
-                                        >JUSTICIA</button>
+                                        <button onClick={() => setInstitution('justicia')}
+                                            className={`px-2.5 py-1.5 text-[11px] font-black rounded-lg transition-all ${institution === 'justicia' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-slate-500 hover:bg-white hover:text-blue-700'}`}>
+                                            JUSTICIA
+                                        </button>
                                     )}
                                     {allowedInstitutions.includes('presidencia') && (
+                                        <button onClick={() => setInstitution('presidencia')}
+                                            className={`px-2.5 py-1.5 text-[11px] font-black rounded-lg transition-all ${institution === 'presidencia' ? 'bg-amber-600 text-white shadow-md shadow-amber-500/20' : 'text-slate-500 hover:bg-white hover:text-amber-700'}`}>
+                                            PRESIDENCIA
+                                        </button>
+                                    )}
+                                    {allowedInstitutions.includes('culturas') && (
                                         <button
-                                            onClick={() => setInstitution('presidencia')}
-                                            className={`px-2.5 py-1 text-[11px] font-black rounded-lg transition-all ${institution === 'presidencia' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
-                                        >PRESIDENCIA</button>
+                                            onClick={() => setInstitution('culturas')}
+                                            className={`px-2.5 py-1 text-[11px] font-black rounded-lg transition-all ${institution === 'culturas' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
+                                        >CULTURAS</button>
+                                    )}
+                                    {allowedInstitutions.includes('vicepresidencia') && (
+                                        <button
+                                            onClick={() => setInstitution('vicepresidencia')}
+                                            className={`px-2.5 py-1 text-[11px] font-black rounded-lg transition-all ${institution === 'vicepresidencia' ? 'bg-rose-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
+                                        >VICEPRESIDENCIA</button>
                                     )}
                                 </div>
                             </div>
@@ -399,6 +431,7 @@ function App() {
                         {activeTab === 'historial' && <HistorialActasView authFetch={authFetch} />}
                         {activeTab === 'control-activos' && <ControlActivosView authFetch={authFetch} currentUser={currentUser} />}
                         {activeTab === 'bitacora' && <BitacoraView authFetch={authFetch} />}
+                        {activeTab === 'catalogos' && <CatalogosView authFetch={authFetch} currentUser={currentUser} />}
                         {activeTab === 'accesos' && currentUser?.rol === 'admin' && <GestionAccesosView authFetch={authFetch} currentUser={currentUser} adminPassword={adminPassword} />}
                     </div>
                 </main>

@@ -64,14 +64,12 @@ const HistorialActasView = ({ authFetch = fetch }) => {
             const assetId = editingAsset.id;
             const actaId = editingAsset.last_acta_id;
 
-            // 1. Update Asset Details (Description, Serie)
+            // 1. Update Asset Details (Description)
             const resAsset = await authFetch(`/api/activos/${assetId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    codigo_activo: editingAsset.codigo_activo,
                     descripcion: editingAsset.descripcion,
-                    serie: editingAsset.serie,
                     estado_actual: editingAsset.estado_actual || 'Asignado'
                 })
             });
