@@ -27,7 +27,7 @@ const COLOR_MAP = {
     red: { bg: 'bg-red-600', light: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', btn: 'bg-red-600 hover:bg-red-700' },
 };
 
-const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
+const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch, institution }) => {
     const [activos, setActivos] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('');
@@ -37,6 +37,8 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
     const Icon = cfg.icon;
 
     const fetchData = async () => {
+        setActivos([]);
+        setFilter('');
         setLoading(true);
         try {
             // Usar el endpoint específico si existe (para filtros de estado), sino el general
@@ -58,7 +60,7 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
         } finally { setLoading(false); }
     };
 
-    useEffect(() => { fetchData(); }, [tipo, authFetch]);
+    useEffect(() => { fetchData(); }, [tipo, authFetch, institution]);
 
     const filtered = activos.filter(a =>
         (a.codigo_activo || '').toLowerCase().includes(filter.toLowerCase()) ||
@@ -110,7 +112,7 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
             <div className={`flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-xl border ${colors.light} ${colors.border}`}>
                 <button
                     onClick={onBack}
-                    className="flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-900 transition-colors">
+                    className="flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors">
                     <ArrowLeft size={16} /> Volver al Dashboard
                 </button>
                 <div className="flex-1 flex items-center gap-3 sm:justify-center">
@@ -118,7 +120,7 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
                         <Icon size={18} />
                     </div>
                     <div>
-                        <h2 className={`font-black text-sm ${colors.text}`}>{cfg.label}</h2>
+                        <h2 className={`font-semibold text-sm ${colors.text}`}>{cfg.label}</h2>
                         <p className="text-slate-500 text-xs">{loading ? 'Cargando...' : `${filtered.length} registros${filter ? ' (filtrados)' : ''}`}</p>
                     </div>
                 </div>
@@ -131,7 +133,7 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
                     <button
                         onClick={exportExcel}
                         disabled={!filtered.length}
-                        className={`flex items-center gap-2 px-4 py-2 text-white text-xs font-bold rounded-lg transition-all active:scale-95 shadow-sm disabled:opacity-40 ${colors.btn}`}>
+                        className={`flex items-center gap-2 px-4 py-2 text-white text-xs font-semibold rounded-lg transition-all active:scale-95 shadow-sm disabled:opacity-40 ${colors.btn}`}>
                         <FileSpreadsheet size={14} /> Exportar Excel
                     </button>
                 </div>
@@ -158,7 +160,7 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
             ) : filtered.length === 0 ? (
                 <div className="bg-white rounded-xl border border-dashed border-slate-200 py-16 text-center">
                     <Package size={36} className="mx-auto text-slate-200 mb-3" />
-                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Sin resultados</p>
+                    <p className="text-slate-400 text-xs font-semibold uppercase tracking-widest">Sin resultados</p>
                 </div>
             ) : (
                 <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -166,7 +168,7 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
                     <div className="hidden sm:block overflow-x-auto max-h-[calc(100vh-320px)] overflow-y-auto custom-scrollbar">
                         <table className="w-full text-left border-collapse min-w-[800px]">
                             <thead className="sticky top-0 z-20">
-                                <tr className={`text-[10px] uppercase tracking-wider font-bold border-b ${colors.light} ${colors.border}`}>
+                                <tr className={`text-[10px] uppercase tracking-wider font-semibold border-b ${colors.light} ${colors.border}`}>
                                     <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>#</th>
                                     <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>Código</th>
                                     <th className={`px-3 py-2.5 ${colors.light} ${colors.text}`}>Descripción</th>
@@ -181,9 +183,9 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
                                         <td className="px-3 py-2 text-[10px] text-slate-400 font-mono">{i + 1}</td>
                                         <td className="px-3 py-2">
                                             <div className="flex flex-col gap-1">
-                                                <span className="font-mono font-black text-xs text-slate-800 uppercase leading-none">{a.codigo_activo}</span>
+                                                <span className="font-mono font-semibold text-xs text-slate-800 uppercase leading-none">{a.codigo_activo}</span>
                                                 {a.institucion && (
-                                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter w-fit ${getInstitutionStyle(a.institucion)}`}>
+                                                    <span className={`text-[8px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-tighter w-fit ${getInstitutionStyle(a.institucion)}`}>
                                                         {a.institucion}
                                                     </span>
                                                 )}
@@ -193,11 +195,11 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
                                             <div className="leading-relaxed break-words" title={a.descripcion}>{a.descripcion}</div>
                                         </td>
                                         <td className="px-3 py-2 text-[10px] text-slate-500 font-semibold italic">
-                                            {a.edificio ? <span className="text-slate-700 font-bold block mb-0.5 uppercase tracking-tighter not-italic leading-tight">{a.edificio}</span> : ''}
+                                            {a.edificio ? <span className="text-slate-700 font-semibold block mb-0.5 uppercase tracking-tighter not-italic leading-tight">{a.edificio}</span> : ''}
                                             {a.oficina ? `${a.oficina} (P${a.piso})` : '—'}
                                         </td>
                                         <td className="px-3 py-2">
-                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${a.estado_actual === 'Asignado' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${a.estado_actual === 'Asignado' ? 'bg-blue-50 text-blue-700 border-blue-100' :
                                                 a.estado_actual === 'Disponible' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
                                                     a.estado_actual === 'Mantenimiento' ? 'bg-amber-50 text-amber-700 border-amber-100' :
                                                         'bg-slate-100 text-slate-600'
@@ -217,11 +219,11 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
                         </table>
                         {/* Footer */}
                         <div className={`px-4 py-2 border-t ${colors.border} ${colors.light} flex justify-between items-center`}>
-                            <span className={`text-[10px] font-bold ${colors.text}`}>
+                            <span className={`text-[10px] font-semibold ${colors.text}`}>
                                 {filtered.length} registros · {cfg.label}
                             </span>
                             <button onClick={exportExcel}
-                                className={`flex items-center gap-1.5 px-3 py-1 text-white text-[10px] font-bold rounded-lg transition-all active:scale-95 ${colors.btn}`}>
+                                className={`flex items-center gap-1.5 px-3 py-1 text-white text-[10px] font-semibold rounded-lg transition-all active:scale-95 ${colors.btn}`}>
                                 <FileSpreadsheet size={12} /> Descargar Excel
                             </button>
                         </div>
@@ -233,14 +235,14 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
                             <div key={a.id} className="p-3 space-y-1.5">
                                 <div className="flex items-center justify-between gap-2">
                                     <div className="flex items-center gap-2">
-                                        <span className="font-mono font-black text-xs text-slate-800 uppercase leading-none">{a.codigo_activo}</span>
+                                        <span className="font-mono font-semibold text-xs text-slate-800 uppercase leading-none">{a.codigo_activo}</span>
                                         {a.institucion && (
-                                            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter ${getInstitutionStyle(a.institucion)}`}>
+                                            <span className={`text-[8px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-tighter ${getInstitutionStyle(a.institucion)}`}>
                                                 {a.institucion}
                                             </span>
                                         )}
                                     </div>
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${a.estado_actual === 'Asignado' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${a.estado_actual === 'Asignado' ? 'bg-blue-50 text-blue-700 border-blue-100' :
                                         a.estado_actual === 'Disponible' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
                                             a.estado_actual === 'Mantenimiento' ? 'bg-amber-50 text-amber-700 border-amber-100' :
                                                 'bg-slate-100 text-slate-500'
@@ -249,7 +251,7 @@ const ReporteActivosView = ({ tipo = 'total', onBack, authFetch = fetch }) => {
                                 <div className="text-[11px] text-slate-600 leading-tight">{a.descripcion}</div>
                                 <div className="flex gap-2">
                                     {a.oficina && (
-                                        <span className="text-[9px] text-slate-400 font-bold bg-slate-50 px-1.5 rounded border border-slate-100">
+                                        <span className="text-[9px] text-slate-400 font-semibold bg-slate-50 px-1.5 rounded border border-slate-100">
                                             📍 {a.oficina}
                                         </span>
                                     )}

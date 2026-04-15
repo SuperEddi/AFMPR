@@ -1,5 +1,6 @@
+/* VERSION: 2026-04-14 21:28 */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, ClipboardCheck, User, Package, CheckCircle, AlertCircle, X, MapPin, ListFilter, AlertTriangle, CheckSquare, Download, FileText, Printer } from 'lucide-react';
+import { Search, ClipboardCheck, User, Package, CheckCircle, AlertCircle, X, MapPin, ListFilter, AlertTriangle, CheckSquare, Download, FileText, Printer, Trash2 } from 'lucide-react';
 import { AppDialog, useDialog } from '../components/AppDialog';
 import { exportToExcel } from '../utils/excelExport';
 
@@ -7,14 +8,38 @@ const getInstitutionStyle = (inst) => {
     const i = (inst || '').toUpperCase();
     if (i === 'TIERRAS') return 'bg-emerald-50 text-emerald-600 border-emerald-100';
     if (i === 'JUSTICIA') return 'bg-amber-50 text-amber-600 border-amber-100';
+    if (i === 'PRESIDENCIA') return 'bg-amber-50 text-amber-600 border-amber-100';
+    if (i === 'CULTURAS') return 'bg-indigo-50 text-indigo-600 border-indigo-100';
+    if (i === 'VICEPRESIDENCIA') return 'bg-rose-50 text-rose-600 border-rose-100';
     return 'bg-blue-50 text-blue-600 border-blue-100';
 };
 
-const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
+const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
+    if (!isOpen) return null;
+    const maxWidths = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg', xl: 'max-w-2xl' };
+    return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <div className={`bg-white rounded-2xl shadow-2xl w-full ${maxWidths[size]} animate-in zoom-in-95 duration-200 overflow-hidden`}>
+                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
+                    <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wider">{title}</h3>
+                    <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors">
+                        <X size={18} />
+                    </button>
+                </div>
+                <div className="max-h-[85vh] overflow-y-auto custom-scrollbar p-6">
+                    {children}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => {
+    console.log('ControlActivosView loaded - VERSION: 2026-04-14 21:30');
     const [usuarios, setUsuarios] = useState([]);
     const [allActivos, setAllActivos] = useState([]);
     const [selectedUser, setSelectedUser] = useState(null);
-    const [userSearch, setUserSearch] = useState('');
+    const [auditUserSearch, setAuditUserSearch] = useState('');
     const [expectedActivos, setExpectedActivos] = useState([]);
     const [controlledActivos, setControlledActivos] = useState([]);
     const [surplusActivos, setSurplusActivos] = useState([]); // Sobrantes
@@ -24,18 +49,28 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
     const [activeListTab, setActiveListTab] = useState('pending'); // 'pending', 'found', 'surplus'
     const [printing, setPrinting] = useState(false);
     const [assetObservations, setAssetObservations] = useState({}); // { activoId: 'obs' }
+    const [catalogos, setCatalogos] = useState({ auxiliares: [], grupos: [] });
+    const [assigningAsset, setAssigningAsset] = useState(null); // Activo que se está asignando
+    const [assignFormData, setAssignFormData] = useState({
+        descripcion: '',
+        cat_auxiliar_id: '',
+        cat_grupo_contable_id: '',
+        origen: 'Sobrante'
+    });
     const { showAlert, showConfirm, dialogProps } = useDialog();
 
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [uRes, aRes] = await Promise.all([
+            const [uRes, aRes, cRes] = await Promise.all([
                 authFetch('/api/usuarios'),
-                authFetch('/api/activos')
+                authFetch('/api/activos'),
+                authFetch('/api/catalogos')
             ]);
-            const [uData, aData] = await Promise.all([uRes.json(), aRes.json()]);
+            const [uData, aData, cData] = await Promise.all([uRes.json(), aRes.json(), cRes.json()]);
             setUsuarios(Array.isArray(uData) ? uData : []);
             setAllActivos(Array.isArray(aData) ? aData : []);
+            setCatalogos(cData);
         } catch (err) {
             // Silently fail to protect technical info
         }
@@ -44,7 +79,9 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
 
     useEffect(() => {
         fetchData();
-    }, [fetchData]);
+        window.addEventListener('data-updated', fetchData);
+        return () => window.removeEventListener('data-updated', fetchData);
+    }, [fetchData, institution]);
 
     const handleSelectUser = async (user) => {
         setSelectedUser(user);
@@ -101,7 +138,7 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
             // Silently fail to protect technical info
         }
         setLoading(false);
-        setUserSearch('');
+        setAuditUserSearch('');
         setActiveListTab('pending');
     };
 
@@ -258,21 +295,97 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
         }
     };
 
-    const handleDeleteAuditItem = async (activoId, from) => {
-        if (!selectedUser) return;
+    const handleDeleteAuditItem = async (activoId, fromTab = 'found') => {
+        const isSurplus = fromTab === 'surplus';
+        const asset = allActivos.find(a => a.id === activoId);
+
+        if (isSurplus && asset?.codigo_activo?.includes('NUEVO')) {
+            const confirmed = await showConfirm(
+                '¿Eliminar sobrante?',
+                `Este es un activo nuevo registrado como sobrante. ¿Deseas eliminarlo permanentemente del sistema o solo de esta lista de auditoría?`,
+                { okText: 'ELIMINAR PERMANENTE', cancelText: 'Solo de lista' }
+            );
+
+            if (confirmed === undefined) return; // Cerró el diálogo
+
+            if (confirmed) {
+                try {
+                    const res = await authFetch(`/api/activos/${activoId}`, {
+                        method: 'DELETE',
+                        headers: { 'x-target-institution': selectedUser.institucion }
+                    });
+                    if (res.ok) {
+                        setSurplusActivos(prev => prev.filter(a => a.id !== activoId));
+                        setAllActivos(prev => prev.filter(a => a.id !== activoId));
+                        showAlert('Eliminado', 'El activo ha sido borrado permanentemente.', 'success');
+                    }
+                } catch (e) {
+                    showAlert('Error', 'No se pudo eliminar el activo.');
+                }
+                return;
+            }
+        }
+
+        // Borrado normal solo de la auditoría
         try {
-            await authFetch(`/api/auditorias/usuario/${selectedUser.id}/activo/${activoId}`, {
+            const res = await authFetch(`/api/auditorias/usuario/${selectedUser.id}/activo/${activoId}`, {
                 method: 'DELETE',
                 headers: { 'x-target-institution': selectedUser.institucion }
             });
-            if (from === 'found') {
-                setControlledActivos(prev => prev.filter(a => a.id !== activoId));
-            } else {
-                setSurplusActivos(prev => prev.filter(a => a.id !== activoId));
+
+            if (res.ok) {
+                if (isSurplus) setSurplusActivos(prev => prev.filter(a => a.id !== activoId));
+                else setControlledActivos(prev => prev.filter(a => a.id !== activoId));
+                showAlert('Referencia eliminada', 'Se ha quitado la marca de la auditoría.', 'success');
             }
-        } catch (err) {
-            await showAlert('Error al eliminar el ítem de la auditoría.', { title: 'Error', type: 'error' });
+        } catch (e) {
+            showAlert('Error', 'No se pudo quitar el ítem.');
         }
+    };
+
+    const handleOpenAssignModal = (asset) => {
+        setAssigningAsset(asset);
+        setAssignFormData({
+            descripcion: asset.descripcion || '',
+            cat_auxiliar_id: asset.cat_auxiliar_id || '',
+            cat_grupo_contable_id: asset.cat_grupo_contable_id || '',
+            origen: asset.origen || 'Sobrante'
+        });
+    };
+
+    const handleConfirmAssignment = async () => {
+        if (!assignFormData.descripcion) return showAlert('Error', 'La descripción es obligatoria.');
+
+        setLoading(true);
+        try {
+            const res = await authFetch(`/api/activos/${assigningAsset.id}/auditoria-asignar`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    ...assignFormData,
+                    usuario_auditado_id: selectedUser.id,
+                    realizado_por: currentUser?.nombre
+                }),
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-target-institution': selectedUser.institucion
+                }
+            });
+
+            if (res.ok) {
+                // Mover de sobrante a encontrado
+                setSurplusActivos(prev => prev.filter(a => a.id !== assigningAsset.id));
+                setControlledActivos(prev => [...prev, { ...assigningAsset, ...assignFormData, estado_actual: 'Asignado' }]);
+                setAssigningAsset(null);
+                showAlert('Asignado', 'El activo se ha registrado y asignado correctamente.', 'success');
+                fetchData(); // Refrescar todo
+            } else {
+                const err = await res.json();
+                showAlert('Error', err.message || 'No se pudo completar la asignación.');
+            }
+        } catch (e) {
+            showAlert('Error', 'Ocurrió un error en el servidor.');
+        }
+        setLoading(false);
     };
 
     const handleSaveObservation = async (activo, currentObs) => {
@@ -400,6 +513,11 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                     d.text('Zona Central - Calle Ayacucho Esq. Potosí', PW - MR, PH - 16, { align: 'right' });
                     d.text('Teléfonos: +591 (2) 2184178', PW - MR, PH - 12, { align: 'right' });
                     d.text(`Pág. ${i} / ${total}`, PW / 2, PH - 8, { align: 'center' });
+
+                    // Iniciales del auditor actual
+                    const initials = (currentUser?.nombre || 'SISTEMA').split(' ').map(n => n[0]).join('').toUpperCase();
+                    d.setFontSize(5.5); d.setTextColor(100, 100, 100);
+                    d.text(`USUARIO: ${initials}`, ML, PH - 20.5);
                 }
             };
 
@@ -442,7 +560,15 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                 autoTable(doc, {
                     startY: y + 2, margin: { left: ML, right: MR, bottom: MB + 10 }, tableWidth: contentW,
                     head: [['CÓDIGO', 'DESCRIPCIÓN', 'ESTADO SISTEMA', 'OBSERVACIÓN']],
-                    body: controlledActivos.map(a => [a.codigo_activo, a.descripcion, a.estado_actual, assetObservations[a.id] || '']),
+                    body: controlledActivos.map(a => [
+                        a.codigo_activo,
+                        (a.descripcion || '').replace(/[\u007F-\uFFFF]/g, chr => {
+                            const map = { '\u00D1': 'N', '\u00F1': 'n', '\u00C1': 'A', '\u00E1': 'a', '\u00C9': 'E', '\u00E9': 'e', '\u00CD': 'I', '\u00ED': 'i', '\u00D3': 'O', '\u00F3': 'o', '\u00DA': 'U', '\u00FA': 'u' };
+                            return map[chr] || chr;
+                        }),
+                        a.estado_actual,
+                        assetObservations[a.id] || ''
+                    ]),
                     theme: 'grid',
                     headStyles: { fillColor: [240, 250, 240], textColor: [0, 80, 0], fontSize: 8 },
                     bodyStyles: { fontSize: 7, textColor: [0, 0, 0] },
@@ -459,7 +585,14 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                     startY: y + 2, margin: { left: ML, right: MR, bottom: MB + 10 }, tableWidth: contentW,
                     head: [['CÓDIGO', 'DESCRIPCIÓN', 'ESTADO/MOTIVO']],
                     body: pending.flatMap(a => [
-                        [a.codigo_activo, a.descripcion, 'FALTANTE'],
+                        [
+                            a.codigo_activo,
+                            (a.descripcion || '').replace(/[\u007F-\uFFFF]/g, chr => {
+                                const map = { '\u00D1': 'N', '\u00F1': 'n', '\u00C1': 'A', '\u00E1': 'a', '\u00C9': 'E', '\u00E9': 'e', '\u00CD': 'I', '\u00ED': 'i', '\u00D3': 'O', '\u00F3': 'o', '\u00DA': 'U', '\u00FA': 'u' };
+                                return map[chr] || chr;
+                            }),
+                            'FALTANTE'
+                        ],
                         [{
                             content: `OBSERVACIÓN: ${assetObservations[a.id] || 'NO LOCALIZADO / SIN JUSTIFICACIÓN'}`,
                             colSpan: 3,
@@ -483,7 +616,10 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                     head: [['CÓDIGO', 'DESCRIPCIÓN', 'RESPONSABLE ACTUAL / ESTADO', 'OBSERVACIÓN']],
                     body: surplusActivos.map(a => [
                         a.codigo_activo,
-                        a.descripcion,
+                        (a.descripcion || '').replace(/[\u007F-\uFFFF]/g, chr => {
+                            const map = { '\u00D1': 'N', '\u00F1': 'n', '\u00C1': 'A', '\u00E1': 'a', '\u00C9': 'E', '\u00E9': 'e', '\u00CD': 'I', '\u00ED': 'i', '\u00D3': 'O', '\u00F3': 'o', '\u00DA': 'U', '\u00FA': 'u' };
+                            return map[chr] || chr;
+                        }),
                         a.warning ? `AJENO: ${a.otherResp || 'Otro'}` : (a.estado_actual || 'Disponible'),
                         assetObservations[a.id] || ''
                     ]),
@@ -517,7 +653,7 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
     };
 
     const filteredUsers = React.useMemo(() => {
-        const t = (userSearch || '').toLowerCase().trim();
+        const t = (auditUserSearch || '').toLowerCase().trim();
         if (!t) return [];
 
         // Filtrar y dedubicar por nombre + CI
@@ -532,7 +668,7 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
             seen.add(key);
             return true;
         });
-    }, [usuarios, userSearch]);
+    }, [usuarios, auditUserSearch]);
 
     const pendingActivos = expectedActivos
         .filter(a => !controlledActivos.some(c => c.id === a.id))
@@ -554,7 +690,7 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                         <ClipboardCheck size={20} />
                     </div>
                     <div>
-                        <h2 className="text-base font-black text-slate-900 leading-tight">Control de Activos por Funcionario</h2>
+                        <h2 className="text-base font-semibold text-slate-900 leading-tight">Control de Activos por Funcionario</h2>
                         <p className="text-slate-400 text-xs font-medium">Auditoría, Sobrantes y Faltantes</p>
                     </div>
                 </div>
@@ -562,19 +698,19 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                 <div className="flex items-center gap-2">
                     {selectedUser && (
                         <>
-                            <button onClick={handleExportExcel} className="p-2.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl hover:bg-emerald-100 transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-tight">
+                            <button onClick={handleExportExcel} className="p-2.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl hover:bg-emerald-100 transition-all flex items-center gap-2 text-[10px] font-semibold uppercase tracking-tight">
                                 <Download size={16} /> Excel
                             </button>
-                            <button disabled={printing} onClick={handlePrintPDF} className="p-2.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl hover:bg-rose-100 transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-tight disabled:opacity-50">
+                            <button disabled={printing} onClick={handlePrintPDF} className="p-2.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl hover:bg-rose-100 transition-all flex items-center gap-2 text-[10px] font-semibold uppercase tracking-tight disabled:opacity-50">
                                 <FileText size={16} /> {printing ? 'Generando...' : 'Reporte PDF'}
                             </button>
                             <div className="w-px h-8 bg-slate-100 mx-1" />
-                            <button onClick={handleResetAudit} className="p-2.5 bg-slate-50 text-slate-400 border border-slate-200 rounded-xl hover:bg-rose-50 hover:text-rose-600 transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-tight">
+                            <button onClick={handleResetAudit} className="p-2.5 bg-slate-50 text-slate-400 border border-slate-200 rounded-xl hover:bg-rose-50 hover:text-rose-600 transition-all flex items-center gap-2 text-[10px] font-semibold uppercase tracking-tight">
                                 <X size={16} /> Reiniciar
                             </button>
                             <button
                                 onClick={() => { setSelectedUser(null); setExpectedActivos([]); setControlledActivos([]); setSurplusActivos([]); }}
-                                className="text-xs font-bold text-slate-400 hover:text-slate-600 flex items-center gap-1 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100 transition-all active:scale-95"
+                                className="text-xs font-semibold text-slate-400 hover:text-slate-600 flex items-center gap-1 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100 transition-all active:scale-95"
                             >
                                 <X size={14} /> Cambiar
                             </button>
@@ -589,7 +725,7 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                         <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-indigo-100">
                             <User size={32} />
                         </div>
-                        <h3 className="text-lg font-black text-slate-800">Seleccionar Funcionario</h3>
+                        <h3 className="text-lg font-semibold text-slate-800">Seleccionar Funcionario</h3>
                         <p className="text-slate-500 text-sm">Busca por nombre o CI para iniciar</p>
                     </div>
 
@@ -599,8 +735,8 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                             type="text"
                             placeholder="Ej. Juan Pérez o 1234567..."
                             className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all text-sm font-medium"
-                            value={userSearch}
-                            onChange={e => setUserSearch(e.target.value)}
+                            value={auditUserSearch}
+                            onChange={e => setAuditUserSearch(e.target.value)}
                         />
                     </div>
 
@@ -609,36 +745,36 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                             <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                             Buscando funcionarios...
                         </div>}
-                        {userSearch.length > 0 && filteredUsers.map(u => (
+                        {auditUserSearch.length > 0 && filteredUsers.map(u => (
                             <button
                                 key={u.id}
                                 onClick={() => handleSelectUser(u)}
                                 className="w-full p-3.5 flex items-center gap-4 hover:bg-indigo-50 rounded-2xl transition-all border border-transparent hover:border-indigo-100 group text-left"
                             >
-                                <div className="w-10 h-10 bg-slate-100 text-slate-500 rounded-xl flex items-center justify-center font-black group-hover:bg-white transition-colors uppercase">
+                                <div className="w-10 h-10 bg-slate-100 text-slate-500 rounded-xl flex items-center justify-center font-semibold group-hover:bg-white transition-colors uppercase">
                                     {u.nombre_completo.charAt(0)}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-0.5">
-                                        <div className="font-bold text-slate-800 text-sm truncate uppercase tracking-tight">{u.nombre_completo}</div>
+                                        <div className="font-semibold text-slate-800 text-sm truncate uppercase tracking-tight">{u.nombre_completo}</div>
                                         {u.institucion && (
-                                            <span className={`text-[7px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(u.institucion)}`}>
+                                            <span className={`text-[7px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(u.institucion)}`}>
                                                 {u.institucion}
                                             </span>
                                         )}
                                     </div>
-                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{u.cargo} · CI: {u.ci}</div>
+                                    <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">{u.cargo} · CI: {u.ci}</div>
                                 </div>
                                 <div className="p-2 bg-slate-50 rounded-lg text-slate-300 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-all shadow-sm">
                                     <CheckCircle size={16} />
                                 </div>
                             </button>
                         ))}
-                        {userSearch.length > 0 && filteredUsers.length === 0 && !loading && (
-                            <div className="py-8 text-center text-slate-400 text-sm font-medium italic">No se encontraron coincidencias para "{userSearch}"</div>
+                        {auditUserSearch.length > 0 && filteredUsers.length === 0 && !loading && (
+                            <div className="py-8 text-center text-slate-400 text-sm font-medium italic">No se encontraron coincidencias para "{auditUserSearch}"</div>
                         )}
-                        {!loading && userSearch.length === 0 && (
-                            <div className="py-8 text-center text-slate-300 text-[10px] font-black uppercase tracking-[0.2em]">Escribe nombre o CI para filtrar</div>
+                        {!loading && auditUserSearch.length === 0 && (
+                            <div className="py-8 text-center text-slate-300 text-[10px] font-semibold uppercase tracking-[0.2em]">Escribe nombre o CI para filtrar</div>
                         )}
                     </div>
                 </div>
@@ -648,34 +784,46 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                     <div className="lg:col-span-4 space-y-5">
                         <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="w-12 h-12 bg-indigo-600 text-white rounded-xl flex items-center justify-center font-black text-lg shadow-lg shadow-indigo-500/20">
+                                <div className="w-12 h-12 bg-indigo-600 text-white rounded-xl flex items-center justify-center font-semibold text-lg shadow-lg shadow-indigo-500/20">
                                     {selectedUser.nombre_completo.charAt(0)}
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2 mb-1">
-                                        <h3 className="font-black text-slate-900 text-xs leading-tight truncate uppercase tracking-tight">{selectedUser.nombre_completo}</h3>
+                                        <h3 className="font-semibold text-slate-900 text-xs leading-tight truncate uppercase tracking-tight">{selectedUser.nombre_completo}</h3>
                                         {selectedUser.institucion && (
-                                            <span className={`text-[7px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(selectedUser.institucion)}`}>
+                                            <span className={`text-[7px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(selectedUser.institucion)}`}>
                                                 {selectedUser.institucion}
                                             </span>
                                         )}
                                     </div>
-                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-tighter">CI: {selectedUser.ci} · {selectedUser.cargo}</p>
+                                    <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-tighter">CI: {selectedUser.ci} · {selectedUser.cargo}</p>
                                 </div>
                             </div>
 
-                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-3 mb-5">
-                                <MapPin size={16} className="text-indigo-400" />
-                                <div className="min-w-0">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase leading-none mb-1">Ubicación Actual</p>
-                                    <p className="text-[10px] font-black text-slate-700 truncate uppercase">
-                                        {selectedUser.unidad || 'Sin unidad'} · {selectedUser.oficina || 'Sin oficina'}
-                                    </p>
-                                </div>
+                            <div className="space-y-2 mb-5">
+                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Oficinas y Direcciones</p>
+                                {selectedUser.oficinas_detalle ? selectedUser.oficinas_detalle.split(' | ').map((loc, idx) => (
+                                    <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-start gap-3 shadow-sm hover:shadow-md transition-shadow">
+                                        <div className="p-1.5 bg-white rounded-lg border border-slate-200 text-indigo-500 shadow-sm">
+                                            <MapPin size={14} />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-bold text-slate-800 leading-tight uppercase">{loc.split(' (')[0]}</p>
+                                            <p className="text-[8px] font-medium text-slate-500 uppercase mt-0.5 leading-relaxed">
+                                                {loc.split(' (')[1]?.replace(')', '')}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )) : (
+                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-3">
+                                        <MapPin size={14} className="text-slate-300" />
+                                        <p className="text-[10px] font-semibold text-slate-400 italic">No hay oficinas registradas</p>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="space-y-4">
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center justify-between">
+                                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest flex items-center justify-between">
                                     <span>Escaneo / Validación</span>
                                     <div className="flex gap-1">
                                         <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
@@ -701,7 +849,7 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                                     {suggestions.length > 0 && (
                                         <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl z-50 overflow-hidden backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200">
                                             <div className="px-3 py-2 bg-slate-800/50 border-b border-slate-700/50 flex justify-between items-center">
-                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sugerencias Base General</span>
+                                                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Sugerencias Base General</span>
                                                 <span className="text-[9px] text-slate-500 uppercase">{suggestions.length} resultados</span>
                                             </div>
                                             <div className="max-h-60 overflow-y-auto">
@@ -716,9 +864,9 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                                                         </div>
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-center gap-2">
-                                                                <div className="text-xs font-bold text-slate-200 group-hover:text-blue-300 transition-colors uppercase">{s.codigo_activo}</div>
+                                                                <div className="text-xs font-semibold text-slate-200 group-hover:text-blue-300 transition-colors uppercase">{s.codigo_activo}</div>
                                                                 {s.institucion && (
-                                                                    <span className={`text-[7px] font-black px-1 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(s.institucion)}`}>
+                                                                    <span className={`text-[7px] font-semibold px-1 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(s.institucion)}`}>
                                                                         {s.institucion}
                                                                     </span>
                                                                 )}
@@ -735,7 +883,7 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
 
                                 <button
                                     onClick={() => handleScan()}
-                                    className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                    className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-semibold text-xs uppercase tracking-widest shadow-lg shadow-indigo-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                                 >
                                     Validar Activo
                                 </button>
@@ -743,20 +891,20 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                         </section>
 
                         <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-                            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Resumen Auditoría</h4>
+                            <h4 className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-4">Resumen Auditoría</h4>
                             <div className="grid grid-cols-2 gap-3 mb-3">
                                 <div className="p-3.5 bg-emerald-50 border border-emerald-100 rounded-2xl text-center cursor-pointer hover:bg-emerald-100/50 transition-colors" onClick={() => setActiveListTab('found')}>
-                                    <p className="text-[9px] font-black text-emerald-600 uppercase mb-1">Correctos</p>
-                                    <p className="text-2xl font-black text-emerald-700">{controlledActivos.length}</p>
+                                    <p className="text-[9px] font-semibold text-emerald-600 uppercase mb-1">Correctos</p>
+                                    <p className="text-2xl font-semibold text-emerald-700">{controlledActivos.length}</p>
                                 </div>
                                 <div className="p-3.5 bg-rose-50 border border-rose-100 rounded-2xl text-center cursor-pointer hover:bg-rose-100/50 transition-colors" onClick={() => setActiveListTab('pending')}>
-                                    <p className="text-[9px] font-black text-rose-600 uppercase mb-1">Faltantes</p>
-                                    <p className="text-2xl font-black text-rose-700">{pendingActivos.length}</p>
+                                    <p className="text-[9px] font-semibold text-rose-600 uppercase mb-1">Faltantes</p>
+                                    <p className="text-2xl font-semibold text-rose-700">{pendingActivos.length}</p>
                                 </div>
                             </div>
                             <div className={`p-3.5 rounded-2xl text-center border transition-colors cursor-pointer ${surplusActivos.length > 0 ? 'bg-amber-50 border-amber-200 hover:bg-amber-100/50' : 'bg-slate-50 border-slate-100'}`} onClick={() => setActiveListTab('surplus')}>
-                                <p className={`text-[9px] font-black uppercase mb-1 ${surplusActivos.length > 0 ? 'text-amber-600' : 'text-slate-400'}`}>Sobrantes / Otros</p>
-                                <p className={`text-2xl font-black ${surplusActivos.length > 0 ? 'text-amber-700' : 'text-slate-300'}`}>{surplusActivos.length}</p>
+                                <p className={`text-[9px] font-semibold uppercase mb-1 ${surplusActivos.length > 0 ? 'text-amber-600' : 'text-slate-400'}`}>Sobrantes / Otros</p>
+                                <p className={`text-2xl font-semibold ${surplusActivos.length > 0 ? 'text-amber-700' : 'text-slate-300'}`}>{surplusActivos.length}</p>
                             </div>
                         </section>
                     </div>
@@ -768,19 +916,19 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                         <div className="sticky top-0 z-10 flex border-b border-slate-100 bg-slate-50 p-2 gap-1 overflow-x-auto no-scrollbar">
                             <button
                                 onClick={() => setActiveListTab('pending')}
-                                className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all ${activeListTab === 'pending' ? 'bg-white shadow text-rose-600 border border-rose-100' : 'text-slate-400 hover:bg-white hover:text-slate-600'}`}
+                                className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-semibold uppercase tracking-tight transition-all ${activeListTab === 'pending' ? 'bg-white shadow text-rose-600 border border-rose-100' : 'text-slate-400 hover:bg-white hover:text-slate-600'}`}
                             >
                                 <ListFilter size={14} /> Faltantes ({pendingActivos.length})
                             </button>
                             <button
                                 onClick={() => setActiveListTab('found')}
-                                className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all ${activeListTab === 'found' ? 'bg-white shadow text-emerald-600 border border-emerald-100' : 'text-slate-400 hover:bg-white hover:text-slate-600'}`}
+                                className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-semibold uppercase tracking-tight transition-all ${activeListTab === 'found' ? 'bg-white shadow text-emerald-600 border border-emerald-100' : 'text-slate-400 hover:bg-white hover:text-slate-600'}`}
                             >
                                 <CheckSquare size={14} /> Encontrados ({controlledActivos.length})
                             </button>
                             <button
                                 onClick={() => setActiveListTab('surplus')}
-                                className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all ${activeListTab === 'surplus' ? 'bg-white shadow text-amber-600 border border-amber-100' : 'text-slate-400 hover:bg-white hover:text-slate-600'}`}
+                                className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-semibold uppercase tracking-tight transition-all ${activeListTab === 'surplus' ? 'bg-white shadow text-amber-600 border border-amber-100' : 'text-slate-400 hover:bg-white hover:text-slate-600'}`}
                             >
                                 <AlertTriangle size={14} /> Sobrantes ({surplusActivos.length})
                             </button>
@@ -795,7 +943,7 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                                             <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-3">
                                                 <CheckCircle size={32} />
                                             </div>
-                                            <p className="text-slate-400 text-sm font-bold uppercase tracking-tight">¡Auditoría completa!</p>
+                                            <p className="text-slate-400 text-sm font-semibold uppercase tracking-tight">¡Auditoría completa!</p>
                                             <p className="text-slate-300 text-xs">No hay activos faltantes en el sistema.</p>
                                         </div>
                                     ) : pendingActivos.map(a => (
@@ -805,20 +953,20 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2">
-                                                    <div className="font-mono font-black text-xs text-rose-600 uppercase leading-none">{a.codigo_activo}</div>
+                                                    <div className="font-mono font-semibold text-xs text-rose-600 uppercase leading-none">{a.codigo_activo}</div>
                                                     {a.institucion && (
-                                                        <span className={`text-[7px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(a.institucion)}`}>
+                                                        <span className={`text-[7px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(a.institucion)}`}>
                                                             {a.institucion}
                                                         </span>
                                                     )}
                                                 </div>
                                                 <div className="text-[10px] text-slate-500 font-medium leading-relaxed max-w-sm break-words">{a.descripcion}</div>
-                                                {assetObservations[a.id] && <div className="text-[9px] text-rose-500 font-bold bg-rose-50/50 px-1.5 py-0.5 rounded border border-rose-100/50 mt-1 flex items-center gap-1.5 w-fit"> <AlertCircle size={10} /> {assetObservations[a.id]}</div>}
-                                                {a.oficina && <div className="text-[9px] text-slate-400 font-bold mt-0.5">📍 {a.oficina}</div>}
+                                                {assetObservations[a.id] && <div className="text-[9px] text-rose-500 font-semibold bg-rose-50/50 px-1.5 py-0.5 rounded border border-rose-100/50 mt-1 flex items-center gap-1.5 w-fit"> <AlertCircle size={10} /> {assetObservations[a.id]}</div>}
+                                                {a.oficina && <div className="text-[9px] text-slate-400 font-semibold mt-0.5">📍 {a.oficina}</div>}
                                             </div>
                                             <div className="flex flex-col gap-1 items-end">
-                                                <div className="px-2 py-1 bg-rose-50 border border-rose-100 rounded text-[9px] font-black text-rose-500 uppercase tracking-tighter">Faltante</div>
-                                                <button onClick={() => handleSaveObservation(a, assetObservations[a.id])} className="text-[8px] font-black text-slate-400 hover:text-indigo-600 uppercase flex items-center gap-1 transition-colors">
+                                                <div className="px-2 py-1 bg-rose-50 border border-rose-100 rounded text-[9px] font-semibold text-rose-500 uppercase tracking-tighter">Faltante</div>
+                                                <button onClick={() => handleSaveObservation(a, assetObservations[a.id])} className="text-[8px] font-semibold text-slate-400 hover:text-indigo-600 uppercase flex items-center gap-1 transition-colors">
                                                     <Printer size={10} /> {assetObservations[a.id] ? 'Editar Obs' : 'Añadir Obs'}
                                                 </button>
                                             </div>
@@ -830,7 +978,7 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                             {activeListTab === 'found' && (
                                 <div className="divide-y divide-slate-50">
                                     {filteredFound.length === 0 ? (
-                                        <div className="py-10 text-center text-slate-300 text-[10px] font-black uppercase italic tracking-widest py-20">No hay coincidencias en validados</div>
+                                        <div className="py-10 text-center text-slate-300 text-[10px] font-semibold uppercase italic tracking-widest py-20">No hay coincidencias en validados</div>
                                     ) : filteredFound.map(a => (
                                         <div key={a.id} className="p-4 flex items-center gap-4 bg-emerald-50/30">
                                             <div className="p-2.5 bg-emerald-100 text-emerald-600 rounded-xl">
@@ -838,21 +986,21 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2">
-                                                    <div className="font-mono font-black text-xs text-emerald-700 uppercase leading-none">{a.codigo_activo}</div>
+                                                    <div className="font-mono font-semibold text-xs text-emerald-700 uppercase leading-none">{a.codigo_activo}</div>
                                                     {a.institucion && (
-                                                        <span className={`text-[7px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(a.institucion)}`}>
+                                                        <span className={`text-[7px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(a.institucion)}`}>
                                                             {a.institucion}
                                                         </span>
                                                     )}
                                                 </div>
                                                 <div className="text-[10px] text-emerald-600/70 font-medium leading-relaxed max-w-sm break-words">{a.descripcion}</div>
-                                                {assetObservations[a.id] && <div className="text-[9px] text-emerald-600 font-bold bg-emerald-50/50 px-1.5 py-0.5 rounded border border-emerald-100/50 mt-1 flex items-center gap-1.5 w-fit"> <CheckCircle size={10} /> {assetObservations[a.id]}</div>}
+                                                {assetObservations[a.id] && <div className="text-[9px] text-emerald-600 font-semibold bg-emerald-50/50 px-1.5 py-0.5 rounded border border-emerald-100/50 mt-1 flex items-center gap-1.5 w-fit"> <CheckCircle size={10} /> {assetObservations[a.id]}</div>}
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <button onClick={() => handleSaveObservation(a, assetObservations[a.id])} className="p-1.5 text-slate-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-all" title="Añadir Observación">
                                                     <Printer size={14} />
                                                 </button>
-                                                <div className="px-2 py-1 bg-emerald-100 border border-emerald-200 rounded text-[9px] font-black text-emerald-600 uppercase tracking-tighter">Correcto</div>
+                                                <div className="px-2 py-1 bg-emerald-100 border border-emerald-200 rounded text-[9px] font-semibold text-emerald-600 uppercase tracking-tighter">Correcto</div>
                                                 <button onClick={() => handleDeleteAuditItem(a.id, 'found')} className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all">
                                                     <X size={14} />
                                                 </button>
@@ -865,7 +1013,7 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                             {activeListTab === 'surplus' && (
                                 <div className="divide-y divide-slate-50">
                                     {filteredSurplus.length === 0 ? (
-                                        <div className="py-10 text-center text-slate-300 text-[10px] font-black uppercase italic tracking-widest py-20">No hay coincidencias en sobrantes</div>
+                                        <div className="py-10 text-center text-slate-300 text-[10px] font-semibold uppercase italic tracking-widest py-20">No hay coincidencias en sobrantes</div>
                                     ) : filteredSurplus.map(a => (
                                         <div key={a.id} className={`p-4 flex items-center gap-4 ${a.warning ? 'bg-amber-50' : 'bg-blue-50/50'}`}>
                                             <div className={`p-2.5 rounded-xl ${a.warning ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
@@ -873,26 +1021,36 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2">
-                                                    <div className={`font-mono font-black text-xs uppercase leading-none ${a.warning ? 'text-amber-700' : 'text-blue-700'}`}>{a.codigo_activo}</div>
+                                                    <div className={`font-mono font-semibold text-xs uppercase leading-none ${a.warning ? 'text-amber-700' : 'text-blue-700'}`}>{a.codigo_activo}</div>
                                                     {a.institucion && (
-                                                        <span className={`text-[7px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(a.institucion)}`}>
+                                                        <span className={`text-[7px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-tighter shrink-0 ${getInstitutionStyle(a.institucion)}`}>
                                                             {a.institucion}
                                                         </span>
                                                     )}
                                                 </div>
                                                 <div className={`text-[10px] font-medium leading-relaxed max-w-sm break-words ${a.warning ? 'text-amber-600' : 'text-blue-600'}`}>{a.descripcion}</div>
                                                 {a.warning && (
-                                                    <div className="text-[9px] font-black text-rose-500 mt-1 uppercase flex items-center gap-1">
+                                                    <div className="text-[9px] font-semibold text-rose-500 mt-1 uppercase flex items-center gap-1">
                                                         <AlertCircle size={10} /> Asignado a: {a.otherResp}
                                                     </div>
                                                 )}
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <div className={`px-2 py-1 border rounded text-[9px] font-black uppercase tracking-tighter ${a.warning ? 'bg-rose-100 border-rose-200 text-rose-600' : 'bg-blue-100 border-blue-200 text-blue-600'}`}>
+                                                <div className={`px-2 py-1 border rounded text-[9px] font-semibold uppercase tracking-tighter ${a.warning ? 'bg-rose-100 border-rose-200 text-rose-600' : 'bg-blue-100 border-blue-200 text-blue-600'}`}>
                                                     {a.warning ? '¡Ajeno!' : 'Sobrante'}
                                                 </div>
-                                                <button onClick={() => handleDeleteAuditItem(a.id, 'surplus')} className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all">
-                                                    <X size={14} />
+
+                                                {!a.warning && (
+                                                    <button
+                                                        onClick={() => handleOpenAssignModal(a)}
+                                                        className="px-2 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded text-[9px] font-bold uppercase hover:bg-emerald-100 transition-colors"
+                                                    >
+                                                        Asignar
+                                                    </button>
+                                                )}
+
+                                                <button onClick={() => handleDeleteAuditItem(a.id, 'surplus')} className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all" title="Eliminar definitivamente">
+                                                    <Trash2 size={14} />
                                                 </button>
                                             </div>
                                         </div>
@@ -904,7 +1062,109 @@ const ControlActivosView = ({ authFetch = fetch, currentUser }) => {
                 </div>
             )}
 
+
             <AppDialog {...dialogProps} />
+
+            {/* Modal de Asignación de Sobrante */}
+            <Modal
+                isOpen={!!assigningAsset}
+                onClose={() => setAssigningAsset(null)}
+                title="Completar Registro y Asignar Sobrante"
+                size="lg"
+            >
+                <div className="space-y-5">
+                    <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-3">
+                        <AlertCircle className="text-blue-500 shrink-0" size={20} />
+                        <div>
+                            <p className="text-xs font-bold text-blue-700 uppercase">Información del Activo</p>
+                            <p className="text-[10px] text-blue-600 leading-tight mt-0.5">
+                                Código: <span className="font-mono font-bold">{assigningAsset?.codigo_activo}</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="md:col-span-2">
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Descripción Completa</label>
+                            <textarea
+                                className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all resize-none h-20"
+                                value={assignFormData.descripcion}
+                                onChange={e => setAssignFormData({ ...assignFormData, descripcion: e.target.value })}
+                                placeholder="Ej: Monitor LED 24' Marca Dell..."
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Grupo Contable</label>
+                            <select
+                                className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                                value={assignFormData.cat_grupo_contable_id}
+                                onChange={e => setAssignFormData({ ...assignFormData, cat_grupo_contable_id: e.target.value })}
+                            >
+                                <option value="">Seleccione Grupo</option>
+                                {catalogos.grupos.map(g => (
+                                    <option key={g.id} value={g.id}>{g.nombre}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Auxiliar</label>
+                            <select
+                                className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                                value={assignFormData.cat_auxiliar_id}
+                                onChange={e => setAssignFormData({ ...assignFormData, cat_auxiliar_id: e.target.value })}
+                            >
+                                <option value="">Seleccione Auxiliar</option>
+                                {catalogos.auxiliares
+                                    .filter(a => !assignFormData.cat_grupo_contable_id || a.cat_grupo_contable_id === parseInt(assignFormData.cat_grupo_contable_id))
+                                    .map(a => (
+                                        <option key={a.id} value={a.id}>{a.nombre}</option>
+                                    ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Origen</label>
+                            <select
+                                className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                                value={assignFormData.origen}
+                                onChange={e => setAssignFormData({ ...assignFormData, origen: e.target.value })}
+                            >
+                                <option value="Compra">Compra</option>
+                                <option value="Sobrante">Sobrante</option>
+                                <option value="Donación">Donación</option>
+                            </select>
+                        </div>
+
+                        <div className="md:col-span-2 p-3 bg-indigo-50/50 border border-indigo-100/50 rounded-xl overflow-hidden">
+                            <p className="text-[10px] text-indigo-700 font-bold mb-1 flex items-center gap-2">
+                                <MapPin size={12} /> HEREDAR UBICACIÓN ACTUAL:
+                            </p>
+                            <p className="text-[9px] text-indigo-600 font-medium leading-relaxed italic">
+                                Se registrará en: {selectedUser?.edificio || 'N/A'} - {selectedUser?.unidad || 'N/A'} - {selectedUser?.oficina || 'N/A'}
+                                <br />
+                                <span className="text-indigo-500 not-italic">Dirección: {selectedUser?.edificio_direccion || 'No especificada'}</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-3 pt-2">
+                        <button
+                            onClick={() => setAssigningAsset(null)}
+                            className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-slate-200 transition-all"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={handleConfirmAssignment}
+                            className="flex-1 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all"
+                        >
+                            Confirmar Asignación
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };

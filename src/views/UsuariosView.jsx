@@ -18,7 +18,7 @@ const getRowBorder = (inst) => {
     return cfg ? cfg.border : '';
 };
 
-const UsuariosView = ({ authFetch = fetch, currentUser }) => {
+const UsuariosView = ({ authFetch = fetch, currentUser, institution }) => {
     const [usuarios, setUsuarios] = useState([]);
     const [catalogos, setCatalogos] = useState({ ubicaciones: [], unidades: [], oficinas: [], pisos: [] });
     const [loading, setLoading] = useState(true);
@@ -56,13 +56,13 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
         setLoading(false);
     }, [authFetch]);
 
-    // Carga inicial y cuando cambia la institución
+    // Carga inicial y cuando cambia la institución o los callbacks de fetch
     useEffect(() => {
         setUsuarios([]);
         setFilter('');
         fetchCatalogos();
         fetchUsuarios(false);
-    }, [fetchUsuarios, fetchCatalogos]);
+    }, [fetchUsuarios, fetchCatalogos, institution]);
 
     useEffect(() => {
         const handler = () => {
@@ -164,7 +164,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
 
     if (loading) return (
         <div className="flex items-center justify-center py-20">
-            <div className="text-slate-400 font-bold text-sm animate-pulse">Cargando usuarios...</div>
+            <div className="text-slate-400 font-semibold text-sm animate-pulse">Cargando usuarios...</div>
         </div>
     );
 
@@ -178,7 +178,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                             <Users size={18} />
                         </div>
                         <div>
-                            <h2 className="text-base font-black text-slate-900 leading-tight">Gestión de Usuarios</h2>
+                            <h2 className="text-base font-semibold text-slate-900 leading-tight">Gestión de Usuarios</h2>
                             <p className="text-slate-400 text-xs font-medium">
                                 {filter ? `${filtered.length} de ${usuarios.length}` : `${usuarios.length}`} personas registradas
                             </p>
@@ -197,7 +197,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                         </div>
                         <button
                             onClick={() => openModal()}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 font-bold text-sm transition-all active:scale-95 whitespace-nowrap shadow-md shadow-blue-500/20"
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 font-semibold text-sm transition-all active:scale-95 whitespace-nowrap shadow-md shadow-blue-500/20"
                         >
                             <UserPlus size={16} /> <span className="hidden sm:inline">Registrar</span>
                         </button>
@@ -209,7 +209,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                     <div className="hidden md:block overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar">
                         <table className="w-full text-left border-collapse">
                             <thead className="sticky top-0 z-20">
-                                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500 font-bold">
+                                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
                                     <th className="px-4 py-3 bg-slate-50">Nombre</th>
                                     <th className="px-4 py-3 bg-slate-50 text-center">CI</th>
                                     <th className="px-4 py-3 bg-slate-50">Cargo/Unidad</th>
@@ -223,14 +223,14 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                                     <tr key={`${u.institucion || 'x'}-${u.id}`} className={`hover:bg-slate-50 transition-colors text-sm ${getRowBorder(u.institucion)}`}>
                                         <td className="px-4 py-2.5">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center text-[10px] font-black text-blue-700 flex-shrink-0">
+                                                <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center text-[10px] font-semibold text-blue-700 flex-shrink-0">
                                                     {u.nombre_completo?.charAt(0).toUpperCase()}
                                                 </div>
                                                 <div className="flex flex-col">
                                                     <div className="flex items-center gap-2">
                                                         <span className="font-semibold text-slate-800 leading-tight">{u.nombre_completo}</span>
                                                         {u.institucion && (
-                                                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide ${getInstitutionStyle(u.institucion)}`}>
+                                                            <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide ${getInstitutionStyle(u.institucion)}`}>
                                                                 {u.institucion}
                                                             </span>
                                                         )}
@@ -239,12 +239,12 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                                             </div>
                                         </td>
                                         <td className="px-4 py-2.5">
-                                            <span className="font-mono text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold">{u.ci}</span>
+                                            <span className="font-mono text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold">{u.ci}</span>
                                         </td>
                                         <td className="px-4 py-2.5 text-slate-600 text-xs font-medium">
-                                            <div className="font-bold">{u.cargo || '—'}</div>
+                                            <div className="font-semibold">{u.cargo || '—'}</div>
                                             <div className="text-[10px] text-slate-400">
-                                                {u.edificio ? <span className="font-black text-indigo-500 uppercase">{u.edificio}</span> : ''}
+                                                {u.edificio ? <span className="font-semibold text-indigo-500 uppercase">{u.edificio}</span> : ''}
                                                 {u.edificio && u.unidad ? ' · ' : ''}
                                                 {u.unidad || '—'}
                                             </div>
@@ -254,7 +254,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                                         </td>
                                         <td className="px-4 py-2.5">
                                             {u.registrado_por ? (
-                                                <span className="text-[10px] font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full border border-violet-100 uppercase">
+                                                <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full border border-violet-100 uppercase">
                                                     {u.registrado_por}
                                                 </span>
                                             ) : (
@@ -284,14 +284,14 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                             <div className="py-12 text-center text-slate-400 text-sm font-medium">Sin resultados</div>
                         ) : filtered.map(u => (
                             <div key={`${u.institucion || 'x'}-${u.id}`} className="p-3 flex items-center gap-3">
-                                <div className="w-9 h-9 bg-blue-100 rounded-xl flex items-center justify-center text-sm font-black text-blue-700 flex-shrink-0">
+                                <div className="w-9 h-9 bg-blue-100 rounded-xl flex items-center justify-center text-sm font-semibold text-blue-700 flex-shrink-0">
                                     {u.nombre_completo?.charAt(0).toUpperCase()}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
-                                        <div className="font-bold text-slate-800 text-sm truncate">{u.nombre_completo}</div>
+                                        <div className="font-semibold text-slate-800 text-sm truncate">{u.nombre_completo}</div>
                                         {u.institucion && (
-                                            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${getInstitutionStyle(u.institucion)}`}>
+                                            <span className={`text-[8px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-tighter ${getInstitutionStyle(u.institucion)}`}>
                                                 {u.institucion}
                                             </span>
                                         )}
@@ -319,7 +319,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                             {/* Handle bar móvil */}
                             <div className="sm:hidden w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 mb-1" />
                             <div className="p-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
-                                <h3 className="font-bold text-slate-900 text-sm">
+                                <h3 className="font-semibold text-slate-900 text-sm">
                                     {editingUser ? 'Editar Usuario' : 'Nuevo Usuario'}
                                 </h3>
                                 <button onClick={() => setShowModal(false)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg transition-colors">
@@ -328,7 +328,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                             </div>
                             <form onSubmit={handleSubmit} className="p-4 space-y-4">
                                 <div>
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
+                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
                                         <UserPlus size={11} /> Nombre Completo
                                     </label>
                                     <input name="nombre_completo" required
@@ -339,7 +339,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
+                                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
                                             <Fingerprint size={11} /> CI
                                         </label>
                                         <input name="ci" required type="number"
@@ -348,7 +348,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
+                                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
                                             <Briefcase size={11} /> Cargo
                                         </label>
                                         <input name="cargo"
@@ -359,7 +359,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                                 </div>
 
                                 <div>
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
+                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
                                         <Building size={11} /> Unidad (Catálogo)
                                     </label>
                                     <select name="cat_unidad_id" required
@@ -374,7 +374,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
                                 </div>
 
                                 <div>
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
+                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
                                         <MapPin size={11} /> Oficinas Asignadas (Multiselección)
                                     </label>
                                     <div className="max-h-40 overflow-y-auto border border-slate-100 rounded-lg p-2 bg-slate-50 space-y-1 custom-scrollbar text-left">
@@ -399,11 +399,11 @@ const UsuariosView = ({ authFetch = fetch, currentUser }) => {
 
                                 <div className="flex gap-2 pt-2">
                                     <button type="button" onClick={() => setShowModal(false)}
-                                        className="flex-1 py-2.5 border border-slate-200 text-slate-400 rounded-lg font-bold text-sm hover:bg-slate-50 transition-all">
+                                        className="flex-1 py-2.5 border border-slate-200 text-slate-400 rounded-lg font-semibold text-sm hover:bg-slate-50 transition-all">
                                         Cancelar
                                     </button>
                                     <button type="submit" disabled={saving}
-                                        className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 shadow-lg shadow-blue-500/20 active:scale-95 transition-all disabled:opacity-50">
+                                        className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 shadow-lg shadow-blue-500/20 active:scale-95 transition-all disabled:opacity-50">
                                         {saving ? 'Guardando...' : editingUser ? 'Guardar' : 'Registrar'}
                                     </button>
                                 </div>

@@ -52,7 +52,7 @@ const QuickAddSelect = ({
                 onClick={() => !disabled && setIsOpen(!isOpen)}
                 className={`flex items-center justify-between w-full px-3 py-2 bg-slate-50 border ${isOpen ? 'border-indigo-500 ring-2 ring-indigo-500/10' : 'border-slate-200'} rounded-lg cursor-pointer transition-all ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-                <span className={`text-sm truncate ${selectedOption ? 'text-slate-900 font-bold' : 'text-slate-400 font-medium'}`}>
+                <span className={`text-sm truncate ${selectedOption ? 'text-slate-900 font-semibold' : 'text-slate-400 font-medium'}`}>
                     {selectedOption ? selectedOption[labelField] : placeholder}
                 </span>
                 <ChevronDown size={14} className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -90,7 +90,7 @@ const QuickAddSelect = ({
                                 <div
                                     key={opt[valueField]}
                                     onClick={() => handleSelect(opt)}
-                                    className="flex items-center justify-between px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-indigo-600 cursor-pointer transition-colors"
+                                    className="flex items-center justify-between px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-indigo-600 cursor-pointer transition-colors"
                                 >
                                     <span>{opt[labelField]}</span>
                                     {String(opt[valueField]) === String(value) && <Check size={12} className="text-indigo-600" />}
@@ -98,11 +98,11 @@ const QuickAddSelect = ({
                             ))
                         ) : searchTerm.trim() ? (
                             <div className="px-3 py-4 text-center">
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">No se encontraron resultados</p>
+                                <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest mb-2">No se encontraron resultados</p>
                             </div>
                         ) : (
                             <div className="px-3 py-4 text-center">
-                                <p className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">Escriba para buscar</p>
+                                <p className="text-[10px] text-slate-300 font-semibold uppercase tracking-widest">Escriba para buscar</p>
                             </div>
                         )}
                     </div>
@@ -112,7 +112,7 @@ const QuickAddSelect = ({
                             onClick={handleRegisterRequest}
                             className="p-2 border-t border-slate-100 bg-indigo-50/50 hover:bg-indigo-50 transition-colors cursor-pointer group"
                         >
-                            <div className="flex items-center gap-2 px-2 py-1 text-xs font-black text-indigo-600 uppercase tracking-tight">
+                            <div className="flex items-center gap-2 px-2 py-1 text-xs font-semibold text-indigo-600 uppercase tracking-tight">
                                 <div className="w-5 h-5 bg-white border border-indigo-200 rounded flex items-center justify-center shadow-sm group-hover:bg-indigo-600 group-hover:text-white transition-colors">
                                     <Plus size={12} />
                                 </div>

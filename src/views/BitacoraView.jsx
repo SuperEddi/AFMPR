@@ -23,7 +23,7 @@ const getInstitutionStyle = (inst) => {
     return 'bg-slate-50 text-slate-600 border-slate-100';
 };
 
-const BitacoraView = ({ authFetch }) => {
+const BitacoraView = ({ authFetch, institution }) => {
     const [registros, setRegistros] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('');
@@ -38,7 +38,7 @@ const BitacoraView = ({ authFetch }) => {
         setLoading(false);
     }, [authFetch]);
 
-    useEffect(() => { fetchBitacora(); }, [fetchBitacora]);
+    useEffect(() => { fetchBitacora(); }, [fetchBitacora, institution]);
     useEffect(() => {
         const handler = () => fetchBitacora();
         window.addEventListener('data-updated', handler);
@@ -95,7 +95,7 @@ const BitacoraView = ({ authFetch }) => {
                         <BookOpen size={18} />
                     </div>
                     <div>
-                        <h2 className="text-base font-black text-slate-900">Bitácora de Movimientos</h2>
+                        <h2 className="text-base font-semibold text-slate-900">Bitácora de Movimientos</h2>
                         <p className="text-slate-400 text-xs font-medium">
                             {filter || tipoFiltro !== 'todos'
                                 ? `${filtered.length} de ${registros.length} registros`
@@ -105,7 +105,7 @@ const BitacoraView = ({ authFetch }) => {
                 </div>
                 <div className="flex gap-2 flex-wrap">
                     {/* Filtro tipo */}
-                    <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-[11px] font-black">
+                    <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-[11px] font-semibold">
                         {['todos', 'Asignación', 'Devolución', 'Auditoría'].map(t => (
                             <button key={t} onClick={() => setTipoFiltro(t)}
                                 className={`px-2.5 py-1 rounded-md transition-all uppercase ${tipoFiltro === t ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
@@ -137,7 +137,7 @@ const BitacoraView = ({ authFetch }) => {
                         <div className="hidden md:block overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar">
                             <table className="w-full text-left text-sm">
                                 <thead className="sticky top-0 z-20">
-                                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500 font-bold">
+                                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
                                         <th className="px-4 py-3 bg-slate-50">Código</th>
                                         <th className="px-4 py-3 bg-slate-50">Descripción</th>
                                         <th className="px-4 py-3 bg-slate-50">Responsable</th>
@@ -161,9 +161,9 @@ const BitacoraView = ({ authFetch }) => {
                                             <tr key={`${r.acta_id}-${i}`} className={`transition-colors hover:bg-slate-50 ${cfg.border}`}>
                                                 <td className="px-4 py-2.5">
                                                     <div className="flex items-center gap-2">
-                                                        <span className="font-mono font-bold text-xs text-slate-800 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 uppercase">{r.codigo_activo}</span>
+                                                        <span className="font-mono font-semibold text-xs text-slate-800 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 uppercase">{r.codigo_activo}</span>
                                                         {r.institucion && (
-                                                            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${getInstitutionStyle(r.institucion)}`}>
+                                                            <span className={`text-[8px] font-semibold px-1.5 py-0.5 rounded border uppercase shrink-0 ${getInstitutionStyle(r.institucion)}`}>
                                                                 {r.institucion}
                                                             </span>
                                                         )}
@@ -174,7 +174,7 @@ const BitacoraView = ({ authFetch }) => {
                                                 </td>
                                                 <td className="px-4 py-2.5 text-xs font-medium text-slate-700">{r.responsable || '—'}</td>
                                                 <td className="px-4 py-2.5">
-                                                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-black border ${cfg.class}`}>
+                                                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.class}`}>
                                                         <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
                                                         {r.tipo_acta}
                                                     </span>
@@ -182,7 +182,7 @@ const BitacoraView = ({ authFetch }) => {
                                                 <td className="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">{fmtDate(r.fecha_emision)}</td>
                                                 <td className="px-4 py-2.5">
                                                     {r.realizado_por
-                                                        ? <span className="text-xs font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">{r.realizado_por}</span>
+                                                        ? <span className="text-xs font-semibold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">{r.realizado_por}</span>
                                                         : <span className="text-xs text-slate-300">—</span>
                                                     }
                                                 </td>
@@ -206,14 +206,14 @@ const BitacoraView = ({ authFetch }) => {
                                         <div key={`mob-${r.acta_id}-${i}`} className={`p-3 ${cfg.border}`}>
                                             <div className="flex justify-between items-start gap-2">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="font-mono font-bold text-xs bg-slate-50 px-2 py-0.5 rounded border border-slate-100 uppercase">{r.codigo_activo}</span>
+                                                    <span className="font-mono font-semibold text-xs bg-slate-50 px-2 py-0.5 rounded border border-slate-100 uppercase">{r.codigo_activo}</span>
                                                     {r.institucion && (
-                                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${getInstitutionStyle(r.institucion)}`}>
+                                                        <span className={`text-[8px] font-semibold px-1.5 py-0.5 rounded border uppercase shrink-0 ${getInstitutionStyle(r.institucion)}`}>
                                                             {r.institucion}
                                                         </span>
                                                     )}
                                                 </div>
-                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border ${cfg.class}`}>
+                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.class}`}>
                                                     <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />{r.tipo_acta}
                                                 </span>
                                             </div>
@@ -221,7 +221,7 @@ const BitacoraView = ({ authFetch }) => {
                                             <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-slate-500">
                                                 <span>👤 {r.responsable || '—'}</span>
                                                 <span>🕐 {fmtDate(r.fecha_emision)}</span>
-                                                {r.realizado_por && <span className="text-violet-600 font-bold">🔧 {r.realizado_por}</span>}
+                                                {r.realizado_por && <span className="text-violet-600 font-semibold">🔧 {r.realizado_por}</span>}
                                             </div>
                                         </div>
                                     );

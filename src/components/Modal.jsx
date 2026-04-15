@@ -42,7 +42,7 @@ const Modal = ({ isOpen, onClose, title, children, footer, size = 'md' }) => {
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-3 border-b border-slate-100">
                     <h2
-                        className="font-black text-slate-900 text-sm sm:text-base tracking-wide"
+                        className="font-semibold text-slate-900 text-sm sm:text-base tracking-wide"
                         style={{ fontFamily: 'Consolas, monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}
                     >
                         {title}

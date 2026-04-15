@@ -104,7 +104,7 @@ const SearchableSelect = ({
                         <li
                             onClick={() => handleSelect('')}
                             className={`px-3 py-2 text-xs cursor-pointer text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors
-                                ${!value ? 'bg-indigo-50 text-indigo-600 font-bold' : ''}`}
+                                ${!value ? 'bg-indigo-50 text-indigo-600 font-semibold' : ''}`}
                         >
                             {emptyLabel}
                         </li>
@@ -117,7 +117,7 @@ const SearchableSelect = ({
                                     onClick={() => handleSelect(opt.id)}
                                     className={`px-3 py-2 text-xs cursor-pointer transition-colors
                                         ${String(opt.id) === String(value)
-                                            ? 'bg-indigo-600 text-white font-bold'
+                                            ? 'bg-indigo-600 text-white font-semibold'
                                             : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700'}`}
                                 >
                                     {opt[labelField]}

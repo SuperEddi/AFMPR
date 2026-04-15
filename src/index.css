@@ -7,53 +7,53 @@
    iPhone 13 (390x844px) como referencia base
    ───────────────────────────────────────────── */
 :root {
-  font-family: 'Century Gothic', 'AppleGothic', -apple-system, sans-serif;
+  font-family: 'Didact Gothic', 'Century Gothic', 'CenturyGothic', 'AppleGothic', sans-serif;
   line-height: 1.5;
   color-scheme: light;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
   /* ESCALA TIPOGRÁFICA */
-  --text-badge:   0.65rem;
-  --text-label:   0.70rem;
-  --text-table:   0.78rem;
-  --text-body:    0.875rem;
-  --text-card:    1.00rem;
+  --text-badge: 0.65rem;
+  --text-label: 0.70rem;
+  --text-table: 0.78rem;
+  --text-body: 0.875rem;
+  --text-card: 1.00rem;
   --text-section: 1.10rem;
-  --text-page:    1.30rem;
-  --text-kpi-sm:  1.60rem;
-  --text-kpi-lg:  2.20rem;
+  --text-page: 1.30rem;
+  --text-kpi-sm: 1.60rem;
+  --text-kpi-lg: 2.20rem;
 
   /* PALETA DE INSTITUCIONES (uniformes en toda la app) */
-  --inst-tierras:              #059669;
-  --inst-tierras-bg:           #d1fae5;
-  --inst-justicia:             #2563eb;
-  --inst-justicia-bg:          #dbeafe;
-  --inst-presidencia:          #d97706;
-  --inst-presidencia-bg:       #fef3c7;
-  --inst-culturas:             #7c3aed;
-  --inst-culturas-bg:          #ede9fe;
-  --inst-vicepresidencia:      #e11d48;
-  --inst-vicepresidencia-bg:   #ffe4e6;
-  --inst-consolidado:          #334155;
-  --inst-consolidado-bg:       #f1f5f9;
+  --inst-tierras: #059669;
+  --inst-tierras-bg: #d1fae5;
+  --inst-justicia: #2563eb;
+  --inst-justicia-bg: #dbeafe;
+  --inst-presidencia: #d97706;
+  --inst-presidencia-bg: #fef3c7;
+  --inst-culturas: #7c3aed;
+  --inst-culturas-bg: #ede9fe;
+  --inst-vicepresidencia: #e11d48;
+  --inst-vicepresidencia-bg: #ffe4e6;
+  --inst-consolidado: #334155;
+  --inst-consolidado-bg: #f1f5f9;
 
   /* COLORES DE ESTADO */
-  --estado-disponible-bg:      #d1fae5;
-  --estado-disponible:         #059669;
-  --estado-asignado-bg:        #dbeafe;
-  --estado-asignado:           #2563eb;
-  --estado-mantenimiento-bg:   #fef3c7;
-  --estado-mantenimiento:      #d97706;
-  --estado-sobrante-bg:        #ede9fe;
-  --estado-sobrante:           #7c3aed;
+  --estado-disponible-bg: #d1fae5;
+  --estado-disponible: #059669;
+  --estado-asignado-bg: #dbeafe;
+  --estado-asignado: #2563eb;
+  --estado-mantenimiento-bg: #fef3c7;
+  --estado-mantenimiento: #d97706;
+  --estado-sobrante-bg: #ede9fe;
+  --estado-sobrante: #7c3aed;
 
   /* ACCIONES */
-  --color-primary:    #4f46e5;
+  --color-primary: #4f46e5;
   --color-primary-dk: #4338ca;
-  --color-success:    #059669;
-  --color-danger:     #dc2626;
-  --color-warning:    #d97706;
+  --color-success: #059669;
+  --color-danger: #dc2626;
+  --color-warning: #d97706;
 }
 
 /* ─────────────────────── RESET ─────────────────────── */
@@ -73,7 +73,7 @@ body {
   font-size: var(--text-body);
   @apply bg-slate-50 text-slate-900;
   overflow-x: hidden;
-  padding-left:  env(safe-area-inset-left);
+  padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
 }
 
@@ -83,27 +83,91 @@ body {
 }
 
 /* ─────────────────────── TIPOGRAFÍA ─────────────────────── */
-h1 { font-size: var(--text-page);    font-weight: 900; letter-spacing: -0.02em; }
-h2 { font-size: var(--text-section); font-weight: 800; letter-spacing: -0.01em; }
-h3 { font-size: var(--text-card);    font-weight: 700; }
-h4, h5, h6 { font-size: var(--text-body); font-weight: 700; }
-table  { font-size: var(--text-table); }
-thead th { font-size: var(--text-label); letter-spacing: 0.07em; text-transform: uppercase; }
-label  { font-size: var(--text-label); letter-spacing: 0.05em; }
+h1 {
+  font-size: var(--text-page);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
 
-.text-badge   { font-size: var(--text-badge)   !important; }
-.text-label   { font-size: var(--text-label)   !important; }
-.text-table   { font-size: var(--text-table)   !important; }
-.text-body    { font-size: var(--text-body)    !important; }
-.text-card    { font-size: var(--text-card)    !important; }
-.text-section { font-size: var(--text-section) !important; }
-.text-page    { font-size: var(--text-page)    !important; }
-.kpi-sm { font-size: var(--text-kpi-sm); font-weight: 900; letter-spacing: -0.03em; }
-.kpi-lg { font-size: var(--text-kpi-lg); font-weight: 900; letter-spacing: -0.04em; }
+h2 {
+  font-size: var(--text-section);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+h3 {
+  font-size: var(--text-card);
+  font-weight: 600;
+}
+
+h4,
+h5,
+h6 {
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+table {
+  font-size: var(--text-table);
+}
+
+thead th {
+  font-size: var(--text-label);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+label {
+  font-size: var(--text-label);
+  letter-spacing: 0.05em;
+}
+
+.text-badge {
+  font-size: var(--text-badge) !important;
+}
+
+.text-label {
+  font-size: var(--text-label) !important;
+}
+
+.text-table {
+  font-size: var(--text-table) !important;
+}
+
+.text-body {
+  font-size: var(--text-body) !important;
+}
+
+.text-card {
+  font-size: var(--text-card) !important;
+}
+
+.text-section {
+  font-size: var(--text-section) !important;
+}
+
+.text-page {
+  font-size: var(--text-page) !important;
+}
+
+.kpi-sm {
+  font-size: var(--text-kpi-sm);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.kpi-lg {
+  font-size: var(--text-kpi-lg);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
 
 /* ─────────────────────── FORMULARIOS (sin zoom iOS) ─────────────────────── */
-input, select, textarea, button {
-  font-family: 'Century Gothic', 'AppleGothic', -apple-system, sans-serif;
+input,
+select,
+textarea,
+button {
+  font-family: 'Century Gothic', 'CenturyGothic', 'AppleGothic', sans-serif;
   font-size: 16px !important;
 }
 
@@ -113,31 +177,55 @@ input, select, textarea, button {
   -webkit-overflow-scrolling: touch;
 }
 
-.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 16px); }
-.pb-safe     { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
-.pt-safe     { padding-top: max(1rem, env(safe-area-inset-top)); }
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+
+.pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.pt-safe {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
 
 /* ─────────────────────── SCROLLBARS ─────────────────────── */
-.custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
-.custom-scrollbar::-webkit-scrollbar-track { @apply bg-transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full; }
-.custom-scrollbar::-webkit-scrollbar-thumb:hover { @apply bg-slate-400; }
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 rounded-full;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400;
+}
 
 /* ─────────────────────── COMPONENTES REUTILIZABLES ─────────────────────── */
 
 /* Botones */
 .btn-primary {
-  @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-md shadow-indigo-500/20 hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold text-sm shadow-md shadow-indigo-500/20 hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed;
 }
+
 .btn-secondary {
-  @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-50 active:scale-95 transition-all;
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-semibold text-sm hover:bg-slate-50 active:scale-95 transition-all;
 }
+
 .btn-danger {
-  @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 active:scale-95 transition-all;
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 text-white rounded-xl font-semibold text-sm hover:bg-red-700 active:scale-95 transition-all;
 }
+
 .btn-success {
-  @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 active:scale-95 transition-all;
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold text-sm hover:bg-emerald-700 active:scale-95 transition-all;
 }
+
 .btn-icon {
   @apply p-2 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all active:scale-95;
 }
@@ -146,6 +234,7 @@ input, select, textarea, button {
 .card {
   @apply bg-white rounded-2xl border border-slate-200 shadow-sm;
 }
+
 .card-hover {
   @apply bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300 transition-all cursor-pointer;
 }
@@ -154,38 +243,111 @@ input, select, textarea, button {
 .form-input {
   @apply w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-sm;
 }
+
 .form-label {
-  @apply block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5;
+  @apply block text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1.5;
 }
 
 /* Badges Estado */
-.badge { @apply inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border; }
-.badge-disponible    { background: var(--estado-disponible-bg);    color: var(--estado-disponible);    border-color: #6ee7b7; }
-.badge-asignado      { background: var(--estado-asignado-bg);      color: var(--estado-asignado);      border-color: #93c5fd; }
-.badge-mantenimiento { background: var(--estado-mantenimiento-bg); color: var(--estado-mantenimiento); border-color: #fcd34d; }
-.badge-sobrante      { background: var(--estado-sobrante-bg);      color: var(--estado-sobrante);      border-color: #c4b5fd; }
+.badge {
+  @apply inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border;
+}
+
+.badge-disponible {
+  background: var(--estado-disponible-bg);
+  color: var(--estado-disponible);
+  border-color: #6ee7b7;
+}
+
+.badge-asignado {
+  background: var(--estado-asignado-bg);
+  color: var(--estado-asignado);
+  border-color: #93c5fd;
+}
+
+.badge-mantenimiento {
+  background: var(--estado-mantenimiento-bg);
+  color: var(--estado-mantenimiento);
+  border-color: #fcd34d;
+}
+
+.badge-sobrante {
+  background: var(--estado-sobrante-bg);
+  color: var(--estado-sobrante);
+  border-color: #c4b5fd;
+}
 
 /* Badges Institución */
-.badge-tierras         { background: var(--inst-tierras-bg);         color: var(--inst-tierras);         border-color: #6ee7b7; }
-.badge-justicia        { background: var(--inst-justicia-bg);        color: var(--inst-justicia);        border-color: #93c5fd; }
-.badge-presidencia     { background: var(--inst-presidencia-bg);     color: var(--inst-presidencia);     border-color: #fcd34d; }
-.badge-culturas        { background: var(--inst-culturas-bg);        color: var(--inst-culturas);        border-color: #c4b5fd; }
-.badge-vicepresidencia { background: var(--inst-vicepresidencia-bg); color: var(--inst-vicepresidencia); border-color: #fda4af; }
-.badge-consolidado     { background: var(--inst-consolidado-bg);     color: var(--inst-consolidado);     border-color: #cbd5e1; }
+.badge-tierras {
+  background: var(--inst-tierras-bg);
+  color: var(--inst-tierras);
+  border-color: #6ee7b7;
+}
+
+.badge-justicia {
+  background: var(--inst-justicia-bg);
+  color: var(--inst-justicia);
+  border-color: #93c5fd;
+}
+
+.badge-presidencia {
+  background: var(--inst-presidencia-bg);
+  color: var(--inst-presidencia);
+  border-color: #fcd34d;
+}
+
+.badge-culturas {
+  background: var(--inst-culturas-bg);
+  color: var(--inst-culturas);
+  border-color: #c4b5fd;
+}
+
+.badge-vicepresidencia {
+  background: var(--inst-vicepresidencia-bg);
+  color: var(--inst-vicepresidencia);
+  border-color: #fda4af;
+}
+
+.badge-consolidado {
+  background: var(--inst-consolidado-bg);
+  color: var(--inst-consolidado);
+  border-color: #cbd5e1;
+}
 
 /* ─────────────────────── ANIMACIONES ─────────────────────── */
-.transition-all { transition-duration: 200ms; }
+.transition-all {
+  transition-duration: 200ms;
+}
 
 @keyframes slideUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to   { transform: translateY(0);    opacity: 1; }
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
+
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
-.animate-slide-up { animation: slideUp 0.25s ease-out; }
-.animate-fade-in  { animation: fadeIn 0.2s ease-out; }
+
+.animate-slide-up {
+  animation: slideUp 0.25s ease-out;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
 
 /* Tabla responsiva - scroll lateral en móvil */
 .table-responsive {
@@ -193,16 +355,32 @@ input, select, textarea, button {
   -webkit-overflow-scrolling: touch;
   border-radius: 0.75rem;
 }
-.table-responsive table { min-width: 600px; }
+
+.table-responsive table {
+  min-width: 600px;
+}
 
 /* ─────────────────────── IPHONE 13 (max-width: 430px) ─────────────────────── */
 @media (max-width: 430px) {
-  .text-\[10px\] { font-size: 11px !important; }
-  .text-\[9px\]  { font-size: 10px !important; }
-  .text-\[8px\]  { font-size: 10px !important; }
-  .text-\[11px\] { font-size: 12px !important; }
+  .text-\[10px\] {
+    font-size: 11px !important;
+  }
 
-  header { padding: 0.5rem 0.75rem !important; }
+  .text-\[9px\] {
+    font-size: 10px !important;
+  }
+
+  .text-\[8px\] {
+    font-size: 10px !important;
+  }
+
+  .text-\[11px\] {
+    font-size: 12px !important;
+  }
+
+  header {
+    padding: 0.5rem 0.75rem !important;
+  }
 
   /* Modales pantalla completa */
   .modal-mobile {
@@ -215,17 +393,33 @@ input, select, textarea, button {
   }
 
   /* Grids colapsan a 1 columna */
-  .grid-cols-2 { grid-template-columns: 1fr !important; }
-  .grid-cols-3 { grid-template-columns: 1fr !important; }
+  .grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
 
   /* KPI: siempre 2 columnas */
-  .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
 
   /* Formularios */
-  .form-padding { padding: 1rem !important; }
+  .form-padding {
+    padding: 1rem !important;
+  }
 
-  table { table-layout: auto !important; }
+  table {
+    table-layout: auto !important;
+  }
 }
 
 /* Global overflow safe */
-img, video, canvas, svg { height: auto; }
+img,
+video,
+canvas,
+svg {
+  height: auto;
+}

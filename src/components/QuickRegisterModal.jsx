@@ -30,7 +30,7 @@ const QuickRegisterModal = ({
             if (type === 'grupo') initial = { nombre: initialName, vida_util: '', observaciones: '' };
             setFormData(initial);
         }
-    }, [isOpen, type, initialName, contextData, initialData]);
+    }, [isOpen, type, initialName, contextData?.ubicacion_fisica_id, contextData?.unidad_id, initialData]);
 
     if (!isOpen) return null;
 
@@ -73,7 +73,7 @@ const QuickRegisterModal = ({
                 <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                     <div className="flex items-center gap-2">
                         {getIcon()}
-                        <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wider">{getTitle()}</h3>
+                        <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wider">{getTitle()}</h3>
                     </div>
                     <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-100">
                         <X size={18} />
@@ -85,28 +85,28 @@ const QuickRegisterModal = ({
                     {type === 'ubicacion' && (
                         <>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block tracking-widest">Nombre del Edificio / Ubicación *</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5 block tracking-widest">Nombre del Edificio / Ubicación *</label>
                                 <input
                                     required
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all"
+                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all"
                                     value={formData.nombre || ''}
                                     onChange={e => setFormData(p => ({ ...p, nombre: e.target.value }))}
                                     placeholder="Ej: Casa Grande del Pueblo"
                                 />
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block tracking-widest">Dirección</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5 block tracking-widest">Dirección</label>
                                 <input
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 transition-all"
+                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 transition-all"
                                     value={formData.direccion || ''}
                                     onChange={e => setFormData(p => ({ ...p, direccion: e.target.value }))}
                                     placeholder="Calle, zona, nro..."
                                 />
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block tracking-widest">Observaciones</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5 block tracking-widest">Observaciones</label>
                                 <textarea
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 transition-all min-h-[80px]"
+                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 transition-all min-h-[80px]"
                                     value={formData.observaciones || ''}
                                     onChange={e => setFormData(p => ({ ...p, observaciones: e.target.value }))}
                                     placeholder="..."
@@ -118,22 +118,20 @@ const QuickRegisterModal = ({
                     {type === 'unidad' && (
                         <>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block tracking-widest">Edificio Relacionado</label>
-                                <select
-                                    disabled
-                                    className="w-full px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-bold outline-none appearance-none cursor-not-allowed opacity-70"
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5 block tracking-widest">Edificio Relacionado *</label>
+                                <SearchableSelect
+                                    options={catalogos.ubicaciones?.filter(u => u.activo !== 0) || []}
                                     value={formData.ubicacion_fisica_id || ''}
-                                >
-                                    <option value="">No seleccionado</option>
-                                    {catalogos.ubicaciones?.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                                </select>
+                                    onChange={id => setFormData(p => ({ ...p, ubicacion_fisica_id: id }))}
+                                    emptyLabel="Seleccione un edificio..."
+                                />
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block tracking-widest">Nombre de la Unidad *</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5 block tracking-widest">Nombre de la Unidad *</label>
                                 <input
                                     required
                                     autoFocus
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
                                     value={formData.nombre || ''}
                                     onChange={e => setFormData(p => ({ ...p, nombre: e.target.value }))}
                                     placeholder="Ej: Unidad de Sistemas"
@@ -145,22 +143,20 @@ const QuickRegisterModal = ({
                     {type === 'oficina' && (
                         <>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block tracking-widest">Unidad Relacionada</label>
-                                <select
-                                    disabled
-                                    className="w-full px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-bold outline-none appearance-none cursor-not-allowed opacity-70"
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5 block tracking-widest">Unidad Relacionada *</label>
+                                <SearchableSelect
+                                    options={catalogos.unidades?.filter(u => u.activo !== 0) || []}
                                     value={formData.unidad_id || ''}
-                                >
-                                    <option value="">No seleccionada</option>
-                                    {catalogos.unidades?.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                                </select>
+                                    onChange={id => setFormData(p => ({ ...p, unidad_id: id }))}
+                                    emptyLabel="Seleccione una unidad..."
+                                />
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block tracking-widest">Nombre de la Oficina *</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5 block tracking-widest">Nombre de la Oficina *</label>
                                 <input
                                     required
                                     autoFocus
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
                                     value={formData.nombre || ''}
                                     onChange={e => setFormData(p => ({ ...p, nombre: e.target.value }))}
                                     placeholder="Ej: Oficina 102"
@@ -171,11 +167,11 @@ const QuickRegisterModal = ({
 
                     {type === 'piso' && (
                         <div>
-                            <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block tracking-widest">Número de Piso *</label>
+                            <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5 block tracking-widest">Número de Piso *</label>
                             <input
                                 required
                                 autoFocus
-                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-slate-500 focus:ring-4 focus:ring-slate-500/10 transition-all"
+                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-slate-500 focus:ring-4 focus:ring-slate-500/10 transition-all"
                                 value={formData.numero || ''}
                                 onChange={e => setFormData(p => ({ ...p, numero: e.target.value }))}
                                 placeholder="Ej: 1, PB, Sótano..."
@@ -186,7 +182,7 @@ const QuickRegisterModal = ({
                     {type === 'auxiliar' && (
                         <>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block tracking-widest">Grupo Contable Relacionado *</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5 block tracking-widest">Grupo Contable Relacionado *</label>
                                 <SearchableSelect
                                     options={catalogos.grupos?.filter(g => g.activo !== 0) || []}
                                     value={formData.cat_grupo_contable_id || ''}
@@ -195,11 +191,11 @@ const QuickRegisterModal = ({
                                 />
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block tracking-widest">Nombre del Auxiliar *</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5 block tracking-widest">Nombre del Auxiliar *</label>
                                 <input
                                     required
                                     autoFocus
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all"
+                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all"
                                     value={formData.nombre || ''}
                                     onChange={e => setFormData(p => ({ ...p, nombre: e.target.value }))}
                                     placeholder="Ej: Escritorios"
@@ -211,30 +207,30 @@ const QuickRegisterModal = ({
                     {type === 'grupo' && (
                         <>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block tracking-widest">Nombre del Grupo Contable *</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5 block tracking-widest">Nombre del Grupo Contable *</label>
                                 <input
                                     required
                                     autoFocus
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 transition-all"
+                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 transition-all"
                                     value={formData.nombre || ''}
                                     onChange={e => setFormData(p => ({ ...p, nombre: e.target.value }))}
                                     placeholder="Ej: Muebles y Enseres"
                                 />
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block tracking-widest">Vida Útil (Años)</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5 block tracking-widest">Vida Útil (Años)</label>
                                 <input
                                     type="number"
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-violet-500 transition-all"
+                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-violet-500 transition-all"
                                     value={formData.vida_util || ''}
                                     onChange={e => setFormData(p => ({ ...p, vida_util: e.target.value }))}
                                     placeholder="Ej: 10"
                                 />
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block tracking-widest">Observaciones</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5 block tracking-widest">Observaciones</label>
                                 <textarea
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-violet-500 transition-all min-h-[80px]"
+                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-violet-500 transition-all min-h-[80px]"
                                     value={formData.observaciones || ''}
                                     onChange={e => setFormData(p => ({ ...p, observaciones: e.target.value }))}
                                     placeholder="..."
@@ -247,14 +243,14 @@ const QuickRegisterModal = ({
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-1 px-4 py-2.5 text-xs border border-slate-200 text-slate-500 font-black uppercase tracking-widest rounded-xl hover:bg-slate-50 transition-all"
+                            className="flex-1 px-4 py-2.5 text-xs border border-slate-200 text-slate-500 font-semibold uppercase tracking-widest rounded-xl hover:bg-slate-50 transition-all"
                         >
                             Cancelar
                         </button>
                         <button
                             type="submit"
                             disabled={saving}
-                            className={`flex-[2] flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-white rounded-xl shadow-lg transition-all active:scale-95 ${type === 'ubicacion' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20' :
+                            className={`flex-[2] flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold uppercase tracking-widest text-white rounded-xl shadow-lg transition-all active:scale-95 ${type === 'ubicacion' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20' :
                                 type === 'unidad' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20' :
                                     type === 'oficina' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20' :
                                         'bg-slate-800 hover:bg-slate-900 shadow-slate-500/20'

@@ -15,10 +15,10 @@ const TABLES = [
         color: 'text-indigo-600',
         bg: 'bg-indigo-50',
         border: 'border-indigo-300',
-        fields: ['codigo_activo', 'descripcion', 'estado_actual', 'responsable_nombre', 'responsable_ci', 'responsable_cargo', 'unidad', 'oficina', 'piso'],
+        fields: ['codigo_activo', 'descripcion', 'estado_actual', 'responsable_nombre', 'responsable_ci', 'responsable_cargo', 'edificio', 'unidad', 'oficina', 'piso', 'auxiliar', 'grupo_contable'],
         sample: [
-            ['MDRYTVT-001', 'Monitor HP 24"', 'SN123456', 'Asignado', 'Juan Perez', '1234567', 'Técnico', 'Sistemas', 'Ofic. 1', 'Piso 1'],
-            ['MDRYTVT-002', 'Teclado Logitech', 'SN789012', 'Disponible', '', '', '', '', '', ''],
+            ['MDRYTVT-001', 'Monitor HP 24"', 'Disponible', 'Juan Perez', '1234567', 'Técnico', 'Casa Grande del Pueblo', 'Sistemas', 'Ofic. 1', 'Piso 1', 'Equipos de Computación', 'Maquinaria y Equipo'],
+            ['MDRYTVT-002', 'Teclado Logitech', 'Disponible', '', '', '', 'Edificio Anexo', '', '', '', 'Accesorios', 'Muebles y Enseres'],
         ]
     },
     {
@@ -28,10 +28,10 @@ const TABLES = [
         color: 'text-emerald-600',
         bg: 'bg-emerald-50',
         border: 'border-emerald-300',
-        fields: ['codigo_activo', 'descripcion', 'estado_actual'],
+        fields: ['codigo_activo', 'descripcion', 'estado_actual', 'edificio', 'unidad', 'oficina', 'piso', 'auxiliar', 'grupo_contable'],
         sample: [
-            ['MDRYTVT-001', 'Monitor HP 24"', 'SN123456', 'Disponible'],
-            ['MDRYTVT-002', 'Teclado Logitech', 'SN789012', 'Disponible'],
+            ['MDRYTVT-001', 'Monitor HP 24"', 'Disponible', 'Casa Grande del Pueblo', 'Sistemas', 'Ofic. 1', 'Piso 1', 'Equipos de Computación', 'Maquinaria y Equipo'],
+            ['MDRYTVT-002', 'Teclado Logitech', 'Disponible', 'Edificio Anexo', '', '', '', '', ''],
         ]
     },
     {
@@ -41,10 +41,10 @@ const TABLES = [
         color: 'text-blue-600',
         bg: 'bg-blue-50',
         border: 'border-blue-300',
-        fields: ['nombre_completo', 'ci', 'cargo'],
+        fields: ['nombre_completo', 'ci', 'cargo', 'edificio', 'unidad'],
         sample: [
-            ['Juan Perez Quispe', '1234567', 'Técnico'],
-            ['Ana Lopez Mamani', '7654321', 'Secretaria'],
+            ['Juan Perez Quispe', '1234567', 'Técnico', 'Casa Grande del Pueblo', 'Sistemas'],
+            ['Ana Lopez Mamani', '7654321', 'Secretaria', 'Edificio Anexo', 'Administración'],
         ]
     },
     {
@@ -81,11 +81,11 @@ const TABLES = [
         color: 'text-rose-600',
         bg: 'bg-rose-50',
         border: 'border-rose-300',
-        fields: ['nombre'],
+        fields: ['nombre', 'grupo_contable'],
         sample: [
-            ['Muebles de Oficina'],
-            ['Equipos de Computación'],
-            ['Vehículos'],
+            ['Muebles de Oficina', 'Muebles y Enseres'],
+            ['Equipos de Computación', 'Maquinaria y Equipo'],
+            ['Vehículos', 'Vehículos'],
         ]
     },
     {
@@ -111,7 +111,7 @@ const SEPARATORS = [
 ];
 
 // ─── Componente Principal ──────────────────────────────────────────────────
-const MigracionView = ({ authFetch = fetch }) => {
+const MigracionView = ({ authFetch = fetch, institution }) => {
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
     const [error, setError] = useState(null);
@@ -293,7 +293,7 @@ const MigracionView = ({ authFetch = fetch }) => {
                             <Database size={22} />
                         </div>
                         <div>
-                            <h2 className="text-lg font-black text-slate-900 leading-tight">Migración Inteligente</h2>
+                            <h2 className="text-lg font-semibold text-slate-900 leading-tight">Migración Inteligente</h2>
                             <p className="text-slate-400 text-xs font-medium">Carga masiva · detección automática · vista previa editable</p>
                         </div>
                     </div>
@@ -301,19 +301,19 @@ const MigracionView = ({ authFetch = fetch }) => {
 
                 {/* ─── Panel de Configuración ─── */}
                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-5">
-                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                         <Settings2 size={13} className="text-indigo-400" /> Configuración
                     </h3>
 
                     <div className="grid sm:grid-cols-2 gap-5">
                         {/* Tabla destino */}
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase block">Tabla Destino</label>
+                            <label className="text-[10px] font-semibold text-slate-400 uppercase block">Tabla Destino</label>
                             <div className="relative">
                                 <select
                                     value={tableType}
                                     onChange={e => setTableType(e.target.value)}
-                                    className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 pr-10 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 cursor-pointer"
+                                    className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 pr-10 text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 cursor-pointer"
                                 >
                                     {TABLES.map(t => (
                                         <option key={t.id} value={t.id}>{t.label}</option>
@@ -324,17 +324,17 @@ const MigracionView = ({ authFetch = fetch }) => {
                             {/* Campos requeridos */}
                             <div className="flex flex-wrap gap-1 pt-1">
                                 {selectedTable.fields.map(f => (
-                                    <span key={f} className="bg-indigo-50 text-indigo-600 text-[9px] font-black px-2 py-0.5 rounded-md border border-indigo-100">{f}</span>
+                                    <span key={f} className="bg-indigo-50 text-indigo-600 text-[9px] font-semibold px-2 py-0.5 rounded-md border border-indigo-100">{f}</span>
                                 ))}
                             </div>
                         </div>
 
                         {/* Separador */}
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-2">
+                            <label className="text-[10px] font-semibold text-slate-400 uppercase flex items-center gap-2">
                                 Separador de CSV
                                 {autoDetected && (
-                                    <span className="flex items-center gap-1 text-[9px] font-black bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full border border-amber-200">
+                                    <span className="flex items-center gap-1 text-[9px] font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full border border-amber-200">
                                         <Zap size={9} /> Auto-detectado
                                     </span>
                                 )}
@@ -344,7 +344,7 @@ const MigracionView = ({ authFetch = fetch }) => {
                                     <button
                                         key={sep.value}
                                         onClick={() => { setSeparator(sep.value); setAutoDetected(false); }}
-                                        className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-all border ${separator === sep.value
+                                        className={`px-3 py-2.5 rounded-xl text-xs font-semibold transition-all border ${separator === sep.value
                                             ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-500/30'
                                             : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}
                                     >
@@ -358,12 +358,12 @@ const MigracionView = ({ authFetch = fetch }) => {
                     {/* Descarga de plantilla */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-slate-100">
                         <div>
-                            <p className="text-xs font-black text-slate-700">Descargar plantilla lista para llenar</p>
-                            <p className="text-[10px] text-slate-400">Formato: <span className="font-bold text-indigo-600">{selectedTable.label}</span> · Separador: <span className="font-bold text-indigo-600">{sepLabel}</span></p>
+                            <p className="text-xs font-semibold text-slate-700">Descargar plantilla lista para llenar</p>
+                            <p className="text-[10px] text-slate-400">Formato: <span className="font-semibold text-indigo-600">{selectedTable.label}</span> · Separador: <span className="font-semibold text-indigo-600">{sepLabel}</span></p>
                         </div>
                         <button
                             onClick={downloadTemplate}
-                            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-xs shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition-all active:scale-95 whitespace-nowrap"
+                            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold text-xs shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition-all active:scale-95 whitespace-nowrap"
                         >
                             <Download size={14} /> Descargar Plantilla
                         </button>
@@ -383,19 +383,19 @@ const MigracionView = ({ authFetch = fetch }) => {
                     <div>
                         {fileName ? (
                             <>
-                                <p className="font-black text-slate-800 text-sm">{fileName}</p>
+                                <p className="font-semibold text-slate-800 text-sm">{fileName}</p>
                                 <p className="text-slate-400 text-xs mt-0.5">Haz clic para cambiar archivo</p>
                             </>
                         ) : (
                             <>
-                                <p className="font-black text-slate-700 text-base">Arrastra o haz clic para cargar</p>
+                                <p className="font-semibold text-slate-700 text-base">Arrastra o haz clic para cargar</p>
                                 <p className="text-slate-400 text-xs mt-1">Archivos .CSV · detección automática de separador</p>
                             </>
                         )}
                     </div>
                     <button
                         onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                        className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-black text-xs shadow-xl hover:bg-indigo-600 transition-all active:scale-95"
+                        className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-semibold text-xs shadow-xl hover:bg-indigo-600 transition-all active:scale-95"
                     >
                         SELECCIONAR ARCHIVO CSV
                     </button>
@@ -406,7 +406,7 @@ const MigracionView = ({ authFetch = fetch }) => {
                 {rawText && !previewData.length && (
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
                         <AlertTriangle size={18} className="text-amber-500 shrink-0" />
-                        <p className="text-amber-800 text-xs font-bold">No se pudieron separar columnas. Cambia el separador o verifica el formato del archivo.</p>
+                        <p className="text-amber-800 text-xs font-semibold">No se pudieron separar columnas. Cambia el separador o verifica el formato del archivo.</p>
                     </div>
                 )}
 
@@ -421,9 +421,9 @@ const MigracionView = ({ authFetch = fetch }) => {
                                     <Eye size={16} />
                                 </div>
                                 <div>
-                                    <h3 className="font-black text-slate-800 text-sm">Vista Previa en Tiempo Real</h3>
+                                    <h3 className="font-semibold text-slate-800 text-sm">Vista Previa en Tiempo Real</h3>
                                     <p className="text-[10px] text-slate-400 font-medium">
-                                        {previewData.length} filas · {previewHeaders.length} columnas · Separador: <span className="text-indigo-600 font-black">{sepLabel}</span>
+                                        {previewData.length} filas · {previewHeaders.length} columnas · Separador: <span className="text-indigo-600 font-semibold">{sepLabel}</span>
                                     </p>
                                 </div>
                             </div>
@@ -438,16 +438,16 @@ const MigracionView = ({ authFetch = fetch }) => {
                                 {missingCols.length > 0 && (
                                     <div className="flex items-start gap-2">
                                         <AlertTriangle size={13} className="text-amber-600 mt-0.5 shrink-0" />
-                                        <p className="text-[10px] font-bold text-amber-800">
+                                        <p className="text-[10px] font-semibold text-amber-800">
                                             Columnas esperadas faltantes: {' '}
-                                            {missingCols.map(c => <span key={c} className="bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded mr-1 font-black">{c}</span>)}
+                                            {missingCols.map(c => <span key={c} className="bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded mr-1 font-semibold">{c}</span>)}
                                         </p>
                                     </div>
                                 )}
                                 {extraCols.length > 0 && (
                                     <div className="flex items-start gap-2">
                                         <AlertTriangle size={13} className="text-slate-400 mt-0.5 shrink-0" />
-                                        <p className="text-[10px] font-bold text-slate-500">
+                                        <p className="text-[10px] font-semibold text-slate-500">
                                             Columnas extra (se ignorarán): {' '}
                                             {extraCols.map(c => <span key={c} className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded mr-1">{c}</span>)}
                                         </p>
@@ -461,12 +461,12 @@ const MigracionView = ({ authFetch = fetch }) => {
                             <table className="w-full text-left border-collapse table-auto">
                                 <thead className="sticky top-0 bg-slate-100 z-20">
                                     <tr>
-                                        <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase w-10 text-center border-r border-slate-200">#</th>
+                                        <th className="px-4 py-3 text-[10px] font-semibold text-slate-400 uppercase w-10 text-center border-r border-slate-200">#</th>
                                         {previewHeaders.map(h => {
                                             const isExpected = selectedTable.fields.includes(h);
                                             const isMissing = !isExpected;
                                             return (
-                                                <th key={h} className={`px-4 py-3 text-[10px] font-black uppercase tracking-wider min-w-[140px] whitespace-nowrap ${isExpected ? 'text-indigo-600' : 'text-slate-400'}`}>
+                                                <th key={h} className={`px-4 py-3 text-[10px] font-semibold uppercase tracking-wider min-w-[140px] whitespace-nowrap ${isExpected ? 'text-indigo-600' : 'text-slate-400'}`}>
                                                     {h}
                                                     {isMissing && <span className="ml-1 text-[8px] bg-slate-200 text-slate-500 px-1 rounded">extra</span>}
                                                 </th>
@@ -492,7 +492,7 @@ const MigracionView = ({ authFetch = fetch }) => {
                                                             type="text"
                                                             value={row[h] || ''}
                                                             onChange={e => updateCell(idx, h, e.target.value)}
-                                                            className={`w-full bg-transparent text-[11px] font-bold outline-none focus:bg-white px-2 py-1 rounded transition-all border ${hasError
+                                                            className={`w-full bg-transparent text-[11px] font-semibold outline-none focus:bg-white px-2 py-1 rounded transition-all border ${hasError
                                                                 ? 'border-rose-300 text-rose-600 bg-rose-50/50 focus:ring-rose-200'
                                                                 : 'border-transparent text-slate-700 focus:border-indigo-200 focus:text-indigo-700'
                                                                 } focus:ring-2 focus:ring-indigo-100`}
@@ -505,7 +505,7 @@ const MigracionView = ({ authFetch = fetch }) => {
                                 </tbody>
                             </table>
                             {previewData.length > 100 && (
-                                <div className="p-3 text-center text-slate-400 text-[10px] font-black uppercase tracking-widest bg-slate-50">
+                                <div className="p-3 text-center text-slate-400 text-[10px] font-semibold uppercase tracking-widest bg-slate-50">
                                     Mostrando primeros 100 de {previewData.length} registros
                                 </div>
                             )}
@@ -514,19 +514,19 @@ const MigracionView = ({ authFetch = fetch }) => {
                         {/* Pie: Contraseña + Botón Migrar */}
                         <div className="p-5 bg-slate-50/80 border-t border-slate-100 flex flex-col md:flex-row items-center justify-between gap-5">
                             <div className="space-y-1.5 w-full md:max-w-xs">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Contraseña de Administrador</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Contraseña de Administrador</label>
                                 <input
                                     type="password"
                                     value={password}
                                     onChange={e => setPassword(e.target.value)}
                                     placeholder="Ingresa la clave para confirmar"
-                                    className="w-full px-4 py-3 rounded-xl border border-indigo-100 outline-none focus:ring-2 focus:ring-indigo-500/30 font-bold text-sm shadow-sm"
+                                    className="w-full px-4 py-3 rounded-xl border border-indigo-100 outline-none focus:ring-2 focus:ring-indigo-500/30 font-semibold text-sm shadow-sm"
                                 />
                             </div>
                             <button
                                 onClick={handleMigrate}
                                 disabled={loading || !previewData.length}
-                                className="w-full md:w-auto flex items-center justify-center gap-3 px-10 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-2xl shadow-indigo-500/40 hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed group text-sm"
+                                className="w-full md:w-auto flex items-center justify-center gap-3 px-10 py-4 bg-indigo-600 text-white rounded-2xl font-semibold shadow-2xl shadow-indigo-500/40 hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed group text-sm"
                             >
                                 {loading ? (
                                     <>
@@ -551,7 +551,7 @@ const MigracionView = ({ authFetch = fetch }) => {
                             <CheckCircle size={22} />
                         </div>
                         <div className="flex-1">
-                            <h4 className="text-emerald-900 font-black text-base">¡Migración Completada!</h4>
+                            <h4 className="text-emerald-900 font-semibold text-base">¡Migración Completada!</h4>
                             <p className="text-emerald-600 text-xs mt-0.5">Los datos ya están disponibles en el sistema.</p>
                             <div className="grid grid-cols-3 gap-3 mt-4">
                                 <StatBox label="Activos" value={result.created_assets ?? '—'} color="emerald" />
@@ -568,7 +568,7 @@ const MigracionView = ({ authFetch = fetch }) => {
                         <div className="p-2 bg-rose-500 text-white rounded-lg shrink-0">
                             <AlertTriangle size={18} />
                         </div>
-                        <p className="text-rose-800 font-bold text-sm">{error}</p>
+                        <p className="text-rose-800 font-semibold text-sm">{error}</p>
                     </div>
                 )}
             </div>
@@ -581,8 +581,8 @@ const StatBox = ({ label, value, color }) => {
     const cls = { emerald: 'text-emerald-600', blue: 'text-indigo-600', rose: 'text-rose-600' };
     return (
         <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">{label}</span>
-            <span className={`text-2xl font-black mt-1 block ${cls[color]}`}>{value}</span>
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block">{label}</span>
+            <span className={`text-2xl font-semibold mt-1 block ${cls[color]}`}>{value}</span>
         </div>
     );
 };

@@ -7,7 +7,7 @@ import {
 import { AppDialog, useDialog } from '../components/AppDialog';
 import QuickRegisterModal from '../components/QuickRegisterModal';
 
-const CatalogosView = ({ authFetch, currentUser }) => {
+const CatalogosView = ({ authFetch, currentUser, institution }) => {
     const [activeTab, setActiveTab] = useState('ubicaciones');
     const [catalogos, setCatalogos] = useState({
         ubicaciones: [], unidades: [], oficinas: [], pisos: [], auxiliares: [], grupos: []
@@ -35,7 +35,7 @@ const CatalogosView = ({ authFetch, currentUser }) => {
 
     useEffect(() => {
         fetchCatalogosFull();
-    }, [fetchCatalogosFull]);
+    }, [fetchCatalogosFull, institution]);
 
     const handleToggleStatus = async (tipo, item) => {
         const nuevoEstado = item.activo === 1 ? 0 : 1;
@@ -82,17 +82,33 @@ const CatalogosView = ({ authFetch, currentUser }) => {
     };
 
     const handleEdit = (tipo, item) => {
+        const typeMap = {
+            ubicaciones: 'ubicacion',
+            unidades: 'unidad',
+            oficinas: 'oficina',
+            pisos: 'piso',
+            auxiliares: 'auxiliar',
+            grupos: 'grupo'
+        };
         setModalData({
             isOpen: true,
-            type: tipo.slice(0, -1), // unidades -> unidad
+            type: typeMap[tipo] || tipo,
             data: item
         });
     };
 
     const handleNew = (tipo) => {
+        const typeMap = {
+            ubicaciones: 'ubicacion',
+            unidades: 'unidad',
+            oficinas: 'oficina',
+            pisos: 'piso',
+            auxiliares: 'auxiliar',
+            grupos: 'grupo'
+        };
         setModalData({
             isOpen: true,
-            type: tipo.slice(0, -1),
+            type: typeMap[tipo] || tipo,
             data: null
         });
     };
@@ -117,8 +133,8 @@ const CatalogosView = ({ authFetch, currentUser }) => {
             {/* Header y Buscador */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
                 <div>
-                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">Gestión de Catálogos</h1>
-                    <p className="text-sm text-slate-400 font-bold uppercase tracking-widest mt-1">Administración de entidades y ubicaciones</p>
+                    <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Gestión de Catálogos</h1>
+                    <p className="text-sm text-slate-400 font-semibold uppercase tracking-widest mt-1">Administración de entidades y ubicaciones</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <div className="relative">
@@ -148,7 +164,7 @@ const CatalogosView = ({ authFetch, currentUser }) => {
                         <button
                             key={tab.id}
                             onClick={() => { setActiveTab(tab.id); setSearchTerm(''); }}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${isActive ? `${tab.bg} ${tab.color} shadow-sm` : 'text-slate-400 hover:bg-slate-50'
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all whitespace-nowrap ${isActive ? `${tab.bg} ${tab.color} shadow-sm` : 'text-slate-400 hover:bg-slate-50'
                                 }`}
                         >
                             <Icon size={16} />
@@ -161,40 +177,41 @@ const CatalogosView = ({ authFetch, currentUser }) => {
                 })}
             </div>
 
-            {/* Tabla de Resultados */}
+            {/* Vista de Tabla (Desktop) / Vista de Tarjetas (Mobile) */}
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="overflow-x-auto">
+                {/* Desktop Table */}
+                <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left">
                         <thead className="bg-slate-50/50 border-b border-slate-100">
                             <tr>
-                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">ID</th>
-                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nombre / Detalle</th>
-                                {activeTab === 'ubicaciones' && <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Dirección</th>}
-                                {activeTab === 'unidades' && <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Edificio</th>}
-                                {activeTab === 'oficinas' && <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Unidad</th>}
-                                {activeTab === 'grupos' && <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Vida Útil</th>}
-                                {activeTab === 'auxiliares' && <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Grupo Contable</th>}
-                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Estado</th>
-                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Acciones</th>
+                                <th className="px-6 py-4 text-[10px] font-semibold text-slate-400 uppercase tracking-widest">ID</th>
+                                <th className="px-6 py-4 text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Nombre / Detalle</th>
+                                {activeTab === 'ubicaciones' && <th className="px-6 py-4 text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Dirección</th>}
+                                {activeTab === 'unidades' && <th className="px-6 py-4 text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Edificio</th>}
+                                {activeTab === 'oficinas' && <th className="px-6 py-4 text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Unidad</th>}
+                                {activeTab === 'grupos' && <th className="px-6 py-4 text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Vida Útil</th>}
+                                {activeTab === 'auxiliares' && <th className="px-6 py-4 text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Grupo Contable</th>}
+                                <th className="px-6 py-4 text-[10px] font-semibold text-slate-400 uppercase tracking-widest text-center">Estado</th>
+                                <th className="px-6 py-4 text-[10px] font-semibold text-slate-400 uppercase tracking-widest text-right">Acciones</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
                             {loading ? (
                                 <tr>
-                                    <td colSpan="6" className="px-6 py-12 text-center text-slate-400 italic">Cargando datos...</td>
+                                    <td colSpan="8" className="px-6 py-12 text-center text-slate-400 italic font-semibold uppercase tracking-widest text-[10px]">Cargando datos...</td>
                                 </tr>
                             ) : filteredData.length === 0 ? (
                                 <tr>
-                                    <td colSpan="6" className="px-6 py-12 text-center text-slate-400 italic">No se encontraron registros</td>
+                                    <td colSpan="8" className="px-6 py-12 text-center text-slate-400 italic font-semibold uppercase tracking-widest text-[10px]">No se encontraron registros</td>
                                 </tr>
                             ) : (
                                 filteredData.map(item => (
                                     <tr key={item.id} className={`hover:bg-slate-50/50 transition-colors ${item.activo === 0 ? 'opacity-60 grayscale' : ''}`}>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-1 rounded-md">#{item.id}</span>
+                                            <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded-md">#{item.id}</span>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <div className="font-bold text-slate-900 text-sm">{item.nombre || item.numero}</div>
+                                            <div className="font-semibold text-slate-900 text-sm">{item.nombre || item.numero}</div>
                                             {item.observaciones && <div className="text-[10px] text-slate-400 truncate max-w-xs">{item.observaciones}</div>}
                                         </td>
 
@@ -203,28 +220,28 @@ const CatalogosView = ({ authFetch, currentUser }) => {
                                         )}
 
                                         {activeTab === 'unidades' && (
-                                            <td className="px-6 py-4 text-xs text-slate-500 font-bold">
+                                            <td className="px-6 py-4 text-xs text-slate-500 font-semibold">
                                                 {catalogos.ubicaciones.find(u => u.id === item.ubicacion_fisica_id)?.nombre || '—'}
                                             </td>
                                         )}
 
                                         {activeTab === 'oficinas' && (
-                                            <td className="px-6 py-4 text-xs text-slate-500 font-bold">
+                                            <td className="px-6 py-4 text-xs text-slate-500 font-semibold">
                                                 {catalogos.unidades.find(u => u.id === item.unidad_id)?.nombre || '—'}
                                             </td>
                                         )}
 
                                         {activeTab === 'grupos' && (
-                                            <td className="px-6 py-4 text-xs text-slate-600 font-black">{item.vida_util} años</td>
+                                            <td className="px-6 py-4 text-xs text-slate-600 font-semibold">{item.vida_util} años</td>
                                         )}
                                         {activeTab === 'auxiliares' && (
-                                            <td className="px-6 py-4 text-xs text-slate-500 font-bold">
+                                            <td className="px-6 py-4 text-xs text-slate-500 font-semibold">
                                                 {item.grupo_nombre || '—'}
                                             </td>
                                         )}
 
                                         <td className="px-6 py-4 text-center">
-                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${item.activo === 1 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-semibold uppercase tracking-wider ${item.activo === 1 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
                                                 }`}>
                                                 {item.activo === 1 ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
                                                 {item.activo === 1 ? 'Habilitado' : 'Inhabilitado'}
@@ -256,6 +273,79 @@ const CatalogosView = ({ authFetch, currentUser }) => {
                         </tbody>
                     </table>
                 </div>
+
+                {/* Mobile Card View */}
+                <div className="md:hidden divide-y divide-slate-100">
+                    {loading ? (
+                        <div className="px-6 py-12 text-center text-slate-400 italic text-xs font-semibold uppercase tracking-widest animate-pulse">Cargando catálogo...</div>
+                    ) : filteredData.length === 0 ? (
+                        <div className="px-6 py-12 text-center text-slate-400 italic text-xs font-semibold uppercase tracking-widest">Sin resultados</div>
+                    ) : (
+                        filteredData.map(item => (
+                            <div key={item.id} className={`p-4 flex flex-col gap-3 transition-opacity ${item.activo === 0 ? 'opacity-60 grayscale' : ''}`}>
+                                <div className="flex justify-between items-start">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[9px] font-semibold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">#{item.id}</span>
+                                        <div className="font-semibold text-slate-900 text-sm leading-tight">{item.nombre || item.numero}</div>
+                                    </div>
+                                    <span className={`px-2 py-0.5 rounded-full text-[8px] font-semibold border uppercase tracking-wider ${item.activo === 1 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
+                                        {item.activo === 1 ? 'Habilitado' : 'Baja'}
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                    {activeTab === 'ubicaciones' && (
+                                        <div className="col-span-2 text-slate-500 italic">📍 {item.direccion || 'Sin dirección'}</div>
+                                    )}
+                                    {activeTab === 'unidades' && (
+                                        <div className="col-span-2">
+                                            <span className="text-slate-400 font-semibold uppercase mr-1">Edificio:</span>
+                                            <span className="text-emerald-600 font-semibold">{catalogos.ubicaciones.find(u => u.id === item.ubicacion_fisica_id)?.nombre || '—'}</span>
+                                        </div>
+                                    )}
+                                    {activeTab === 'oficinas' && (
+                                        <div className="col-span-2">
+                                            <span className="text-slate-400 font-semibold uppercase mr-1">Unidad:</span>
+                                            <span className="text-blue-600 font-semibold">{catalogos.unidades.find(u => u.id === item.unidad_id)?.nombre || '—'}</span>
+                                        </div>
+                                    )}
+                                    {activeTab === 'grupos' && (
+                                        <div className="col-span-2">
+                                            <span className="text-slate-400 font-semibold uppercase mr-1">Vida Útil:</span>
+                                            <span className="text-violet-600 font-semibold">{item.vida_util} años</span>
+                                        </div>
+                                    )}
+                                    {activeTab === 'auxiliares' && (
+                                        <div className="col-span-2">
+                                            <span className="text-slate-400 font-semibold uppercase mr-1">Grupo:</span>
+                                            <span className="text-amber-600 font-semibold">{item.grupo_nombre || '—'}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center justify-between pt-2 border-t border-slate-50">
+                                    <div className="text-[10px] text-slate-400 font-medium truncate max-w-[60%] italic">
+                                        {item.observaciones || 'Sin observaciones'}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => handleEdit(activeTab, item)}
+                                            className="p-2 text-blue-600 bg-blue-50 rounded-xl active:scale-90 transition-all"
+                                        >
+                                            <Edit2 size={14} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleToggleStatus(activeTab, item)}
+                                            className={`p-2 rounded-xl active:scale-90 transition-all ${item.activo === 1 ? 'text-red-600 bg-red-50' : 'text-emerald-600 bg-emerald-50'}`}
+                                        >
+                                            {item.activo === 1 ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
             </div>
 
             <AppDialog {...dialogProps} />
@@ -271,10 +361,21 @@ const CatalogosView = ({ authFetch, currentUser }) => {
                     catalogos={catalogos}
                     onSave={async (tipo, data) => {
                         const method = modalData.data ? 'PUT' : 'POST';
-                        const url = `/api/catalogos/${TABS.find(t => t.id === activeTab).id}${modalData.data ? '/' + modalData.data.id : ''}`;
+                        // Mapear de vuelta el tipo singular a la tabla plural para el endpoint
+                        const tableMap = {
+                            ubicacion: 'ubicaciones',
+                            unidad: 'unidades',
+                            oficina: 'oficinas',
+                            piso: 'pisos',
+                            auxiliar: 'auxiliares',
+                            grupo: 'grupos'
+                        };
+                        const tableName = tableMap[tipo] || activeTab;
+                        const url = `/api/catalogos/${tableName}${modalData.data ? '/' + modalData.data.id : ''}`;
 
                         const res = await authFetch(url, {
                             method,
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ ...data, registrado_por: currentUser?.nombre })
                         });
 

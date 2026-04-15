@@ -15,13 +15,13 @@ const getInstitutionStyle = (inst) => {
 const RoleBadge = ({ rol }) => {
     if (rol === 'admin') {
         return (
-            <span className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-50 text-amber-600 border border-amber-100 text-[10px] font-black uppercase tracking-wider w-fit">
+            <span className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-50 text-amber-600 border border-amber-100 text-[10px] font-semibold uppercase tracking-wider w-fit">
                 <ShieldCheck size={12} /> Administrador
             </span>
         );
     }
     return (
-        <span className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-black uppercase tracking-wider w-fit">
+        <span className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-semibold uppercase tracking-wider w-fit">
             <UserPlus size={12} /> Técnico
         </span>
     );
@@ -161,7 +161,7 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
                             <ShieldCheck size={18} />
                         </div>
                         <div>
-                            <h2 className="text-base font-black text-slate-900">Gestión de Accesos</h2>
+                            <h2 className="text-base font-semibold text-slate-900">Gestión de Accesos</h2>
                             <p className="text-slate-400 text-xs font-medium">
                                 {filter ? `${filtered.length} de ${users.length}` : users.length} cuentas del sistema
                             </p>
@@ -180,7 +180,7 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
                         </div>
                         <button
                             onClick={openNew}
-                            className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 font-bold text-sm transition-all active:scale-95 shadow-md shadow-amber-500/20 whitespace-nowrap"
+                            className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 font-semibold text-sm transition-all active:scale-95 shadow-md shadow-amber-500/20 whitespace-nowrap"
                         >
                             <UserPlus size={16} /> <span className="hidden sm:inline">Nueva Cuenta</span>
                         </button>
@@ -197,7 +197,7 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
                         <div className="overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar">
                             <table className="w-full text-left">
                                 <thead className="sticky top-0 z-20">
-                                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500 font-bold">
+                                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
                                         <th className="px-4 py-3 bg-slate-50">Usuario</th>
                                         <th className="px-4 py-3 bg-slate-50">Nombre</th>
                                         <th className="px-4 py-3 bg-slate-50">Rol</th>
@@ -211,12 +211,12 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
                                         <tr key={u.id} className="hover:bg-slate-50 transition-colors text-sm">
                                             <td className="px-4 py-3">
                                                 <div className="flex items-center gap-2">
-                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black text-white flex-shrink-0 ${u.rol === 'admin' ? 'bg-amber-500' : 'bg-blue-600'}`}>
+                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-semibold text-white flex-shrink-0 ${u.rol === 'admin' ? 'bg-amber-500' : 'bg-blue-600'}`}>
                                                         {u.username?.charAt(0).toUpperCase()}
                                                     </div>
-                                                    <span className="font-mono font-bold text-slate-700 text-xs">{u.username}</span>
+                                                    <span className="font-mono font-semibold text-slate-700 text-xs">{u.username}</span>
                                                     {u.username === currentUser.username && (
-                                                        <span className="text-[8px] bg-green-100 text-green-700 font-black px-1.5 rounded-full">TÚ</span>
+                                                        <span className="text-[8px] bg-green-100 text-green-700 font-semibold px-1.5 rounded-full">TÚ</span>
                                                     )}
                                                 </div>
                                             </td>
@@ -225,7 +225,7 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
                                             <td className="px-4 py-3">
                                                 <div className="flex flex-wrap gap-1">
                                                     {(u.instituciones || []).map(inst => (
-                                                        <span key={inst} className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter ${getInstitutionStyle(inst)}`}>
+                                                        <span key={inst} className={`text-[8px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-tighter ${getInstitutionStyle(inst)}`}>
                                                             {inst}
                                                         </span>
                                                     ))}
@@ -235,7 +235,7 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
                                                 <button
                                                     onClick={() => handleToggle(u)}
                                                     disabled={u.username === currentUser.username}
-                                                    className="flex items-center gap-1.5 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    className="flex items-center gap-1.5 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
                                                     title={u.username === currentUser.username ? 'No puedes desactivar tu propia cuenta' : ''}
                                                 >
                                                     {u.activo
@@ -271,7 +271,7 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
                     <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-sm animate-in slide-in-from-bottom duration-300 overflow-hidden">
                         <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                            <h3 className="font-bold text-slate-900 text-sm">
+                            <h3 className="font-semibold text-slate-900 text-sm">
                                 {editing ? 'Editar Cuenta' : 'Nueva Cuenta'}
                             </h3>
                             <button onClick={() => setShowModal(false)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg">
@@ -280,14 +280,14 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
                         </div>
                         <form onSubmit={handleSubmit} className="p-4 space-y-3 max-h-[80vh] overflow-y-auto">
                             <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Nombre completo</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-1">Nombre completo</label>
                                 <input required value={form.nombre} onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))}
                                     className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-500 transition-all"
                                     placeholder="Ej. Juan Pérez"
                                 />
                             </div>
                             <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Usuario (login)</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-1">Usuario (login)</label>
                                 <input required value={form.username} onChange={e => setForm(p => ({ ...p, username: e.target.value.toLowerCase().trim() }))}
                                     disabled={!!editing}
                                     className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
@@ -296,7 +296,7 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
                                 {editing && <p className="text-[10px] text-slate-400 mt-1 italic">El nombre de usuario no puede cambiarse.</p>}
                             </div>
                             <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-1">
                                     {editing ? 'Nueva contraseña (dejar vacío para no cambiar)' : 'Contraseña'}
                                 </label>
                                 <div className="relative">
@@ -314,7 +314,7 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Rol</label>
+                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-2">Rol</label>
                                     <select value={form.rol} onChange={e => setForm(p => ({ ...p, rol: e.target.value }))}
                                         className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-500 transition-all font-medium">
                                         <option value="tecnico">Técnico</option>
@@ -324,7 +324,7 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
                             </div>
 
                             <div className="pt-2">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Registrar en bases de datos:</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-2">Registrar en bases de datos:</label>
                                 <div className="space-y-1.5">
                                     {['TIERRAS', 'JUSTICIA', 'PRESIDENCIA', 'CULTURAS', 'VICEPRESIDENCIA'].map(inst => (
                                         <label key={inst} className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer transition-all ${form.instituciones.includes(inst) ? 'border-amber-500 bg-amber-50/50' : 'border-slate-100 hover:bg-slate-50'}`}>
@@ -334,7 +334,7 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
                                                         inst === 'PRESIDENCIA' ? 'bg-amber-500' :
                                                             inst === 'CULTURAS' ? 'bg-indigo-500' : 'bg-rose-500'
                                                     }`}></div>
-                                                <span className="text-xs font-bold text-slate-700">{inst}</span>
+                                                <span className="text-xs font-semibold text-slate-700">{inst}</span>
                                             </div>
                                             <input
                                                 type="checkbox"
@@ -349,11 +349,11 @@ const GestionAccesosView = ({ authFetch, currentUser, adminPassword }) => {
 
                             <div className="flex gap-2 pt-4">
                                 <button type="button" onClick={() => setShowModal(false)}
-                                    className="flex-1 py-2.5 border border-slate-200 text-slate-500 rounded-lg font-bold text-xs hover:bg-slate-50 transition-all">
+                                    className="flex-1 py-2.5 border border-slate-200 text-slate-500 rounded-lg font-semibold text-xs hover:bg-slate-50 transition-all">
                                     Cancelar
                                 </button>
                                 <button type="submit" disabled={saving}
-                                    className="flex-1 py-2.5 bg-amber-500 text-white rounded-lg font-bold text-xs hover:bg-amber-600 shadow-lg shadow-amber-500/20 active:scale-95 disabled:opacity-50 transition-all">
+                                    className="flex-1 py-2.5 bg-amber-500 text-white rounded-lg font-semibold text-xs hover:bg-amber-600 shadow-lg shadow-amber-500/20 active:scale-95 disabled:opacity-50 transition-all">
                                     {saving ? 'Guardando...' : editing ? 'Guardar Cambios' : 'Crear Cuenta'}
                                 </button>
                             </div>

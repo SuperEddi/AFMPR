@@ -17,21 +17,34 @@ const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 // ─── MIDDLEWARES Y CONFIGURACIÓN ─────────────────────────────────────────────
 
 // Helper principal para obtener la DB correcta
-const getDB = (c: any): D1Database | undefined => {
-    // Si viene un target específico (por header), lo priorizamos (para CONSOLIDADO o sincronización de usuarios)
+const getDB = (c: any): any => {
+    // Si viene un target específico (por header), lo priorizamos
     const target = c.req.header('x-target-institution');
-    if (target) {
-        const t = target.toLowerCase();
+    // IMPORTANTE: Ignorar valores inválidos como la cadena "undefined" o "null" que el
+    // navegador puede enviar cuando selectedUser.institucion es undefined en JavaScript
+    if (target && target !== 'undefined' && target !== 'null' && target.trim() !== '') {
+        const t = target.toLowerCase().trim();
         if (t === 'justicia') return c.env.DB_JUSTICIA;
         if (t === 'presidencia') return c.env.DB_PRESIDENCIA;
         if (t === 'culturas') return c.env.DB_CULTURAS;
         if (t === 'vicepresidencia') return c.env.DB_VICEPRESIDENCIA;
         if (t === 'tierras') return c.env.DB;
-        return undefined; // No default if target is wrong
+        // target no reconocido: ignorar y usar el contexto por defecto
     }
-    // Si no, usamos la DB asignada al contexto por el middleware de institución
+    // Retorna la DB del contexto, que puede ser:
+    //   - una D1Database real (si la institución fue seleccionada)
+    //   - la cadena 'CONSOLIDADO' (si se seleccionó modo consolidado)
+    //   - undefined (si la institución no tiene binding en Cloudflare)
     return (c as any).db;
 };
+
+// Helper para operaciones de escritura: rechaza CONSOLIDADO y bindings faltantes
+const requireMutationDB = (c: any): D1Database | null => {
+    const db = getDB(c);
+    if (!db || db === 'CONSOLIDADO') return null;
+    return db as D1Database;
+};
+
 
 // 1. Middleware CORS
 app.use('*', async (c, next) => {
@@ -78,7 +91,6 @@ app.use('*', async (c, next) => {
     const path = c.req.path;
     const sensitivePaths = ['/migrate'];
     const isSensitive = sensitivePaths.some(p => path.includes(p)) ||
-        (method === 'PUT' && !path.includes('/detalles_acta/estado') && !path.includes('/liberar')) ||
         method === 'DELETE';
 
     if (isSensitive) {
@@ -122,12 +134,32 @@ app.onError((err, c) => {
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
+app.all('/debug', async (c) => {
+    const contextDB = (c as any).db;
+    const resolvedDB = getDB(c);
+    const target = c.req.header('x-target-institution');
+    const inst = c.req.header('x-institution');
+    return c.json({
+        contextDB_type: typeof contextDB,
+        resolvedDB_type: typeof resolvedDB,
+        target,
+        inst,
+        hasJusticia: !!c.env.DB_JUSTICIA,
+        hasCulturas: !!c.env.DB_CULTURAS,
+        hasVicepresidencia: !!c.env.DB_VICEPRESIDENCIA
+    });
+});
+
 const formatError = (err: any) => {
     const msg = err.message || '';
     // Errores conocidos y seguros
     if (msg.includes('UNIQUE constraint failed: usuarios.ci')) return 'El CI ya está registrado para otro funcionario.';
     if (msg.includes('UNIQUE constraint failed: activos.codigo_activo')) return 'El código de activo ya existe en el sistema.';
-    if (msg.includes('FOREIGN KEY constraint failed')) return 'No se puede eliminar o modificar porque este registro está siendo usado.';
+    if (msg.includes('FOREIGN KEY constraint failed')) {
+        // Si el error ocurre durante un DELETE o UPDATE, es probable que esté en uso.
+        // Si ocurre en un POST, es probable que el ID de referencia no exista.
+        return 'No se pudo completar la operación: El registro está siendo usado por otros datos o una referencia (Unidad/Oficina) no es válida.';
+    }
     if (msg.includes('D1_TYPE_ERROR')) return 'Error en el formato de los datos enviados.';
 
     // Si no es un error conocido, devolvemos un mensaje genérico para seguridad
@@ -276,11 +308,16 @@ app.get('/usuarios', async (c) => {
     const fetchDBUsuarios = async (db: D1Database, instName: string) => {
         const { results } = await db.prepare(`
             SELECT u.id, u.nombre_completo, u.ci, u.cargo, u.fecha_registro,
-                   un.nombre as unidad, uf.nombre as edificio,
-                   (SELECT GROUP_CONCAT(off.nombre, ', ') 
+                   u.cat_unidad_id, u.ubicacion_fisica_id,
+                   un.nombre as unidad, uf.nombre as edificio, uf.direccion as edificio_direccion,
+                   (SELECT uo.oficina_id FROM usuarios_oficinas uo WHERE uo.usuario_id = u.id LIMIT 1) as cat_oficina_id,
+                   (SELECT off.nombre FROM cat_oficinas off WHERE off.id = (SELECT uo2.oficina_id FROM usuarios_oficinas uo2 WHERE uo2.usuario_id = u.id LIMIT 1)) as oficina,
+                   (SELECT GROUP_CONCAT(off.nombre || ' (' || uf2.nombre || ' - ' || COALESCE(uf2.direccion, 'S/D') || ')', ' | ') 
                     FROM usuarios_oficinas uo 
                     JOIN cat_oficinas off ON uo.oficina_id = off.id 
-                    WHERE uo.usuario_id = u.id) as oficinas
+                    JOIN cat_unidades un2 ON off.unidad_id = un2.id
+                    JOIN ubicacion_fisica uf2 ON un2.ubicacion_fisica_id = uf2.id
+                    WHERE uo.usuario_id = u.id) as oficinas_detalle
             FROM usuarios u
             LEFT JOIN cat_unidades un ON u.cat_unidad_id = un.id
             LEFT JOIN ubicacion_fisica uf ON u.ubicacion_fisica_id = uf.id
@@ -318,9 +355,16 @@ app.post('/usuarios', async (c) => {
         let db: any = getDB(c);
         if (db === 'CONSOLIDADO') return c.json({ error: 'Operación no permitida en modo consolidado. Seleccione una institución específica para registrar funcionarios.' }, 400);
         if (!db) throw new Error('No se pudo identificar la base de datos destino.');
+        const cleanId = (val: any) => (val === '' || val === undefined || val === 'undefined') ? null : val;
+
         const result = await db.prepare(
-            'INSERT INTO usuarios (nombre_completo, ci, cargo, cat_unidad_id, ubicacion_fisica_id, registrado_por) VALUES (?, ?, ?, ?, ?, ?)'
-        ).bind(nombre_completo ?? '', ci ?? '', cargo ?? null, cat_unidad_id ?? null, ubicacion_fisica_id ?? null, registrado_por ?? null).run();
+            'INSERT INTO usuarios (nombre_completo, ci, cargo, registrado_por) VALUES (?, ?, ?, ?)'
+        ).bind(
+            nombre_completo ?? '',
+            ci ?? '',
+            cargo ?? null,
+            registrado_por ?? null
+        ).run();
 
         const userId = result.meta.last_row_id;
 
@@ -349,9 +393,16 @@ app.put('/usuarios/:id', async (c) => {
         let db: any = getDB(c);
         if (db === 'CONSOLIDADO') return c.json({ error: 'Operación no permitida en modo consolidado. Seleccione una institución específica para editar funcionarios.' }, 400);
         if (!db) throw new Error('No se pudo identificar la base de datos destino.');
+        const cleanId = (val: any) => (val === '' || val === undefined || val === 'undefined') ? null : val;
+
         await db.prepare(
-            'UPDATE usuarios SET nombre_completo=?, ci=?, cargo=?, cat_unidad_id=?, ubicacion_fisica_id=? WHERE id=?'
-        ).bind(nombre_completo ?? '', ci ?? '', cargo ?? null, cat_unidad_id ?? null, ubicacion_fisica_id ?? null, id).run();
+            'UPDATE usuarios SET nombre_completo=?, ci=?, cargo=? WHERE id=?'
+        ).bind(
+            nombre_completo ?? '',
+            ci ?? '',
+            cargo ?? null,
+            id
+        ).run();
 
         // Actualizar oficinas en la tabla intermedia
         if (oficinas_ids && Array.isArray(oficinas_ids)) {
@@ -372,6 +423,13 @@ app.put('/usuarios/:id', async (c) => {
 // --- CATALOGOS MANAGEMENT ---
 
 // Auxiliares
+app.get('/catalogos/auxiliares', async (c) => {
+    try {
+        const res = await getDB(c)!.prepare('SELECT a.*, g.nombre as grupo_nombre FROM cat_auxiliares a LEFT JOIN cat_grupos_contables g ON a.cat_grupo_contable_id = g.id WHERE a.activo = 1 ORDER BY a.nombre').all();
+        return c.json(res.results || []);
+    } catch (e: any) { return c.json({ error: formatError(e) }, 500); }
+});
+
 app.post('/catalogos/auxiliares', async (c) => {
     try {
         const { nombre, cat_grupo_contable_id, registrado_por } = await c.req.json();
@@ -399,6 +457,13 @@ app.delete('/catalogos/auxiliares/:id', async (c) => {
 });
 
 // Grupos Contables
+app.get('/catalogos/grupos', async (c) => {
+    try {
+        const res = await getDB(c)!.prepare('SELECT * FROM cat_grupos_contables WHERE activo = 1 ORDER BY nombre').all();
+        return c.json(res.results || []);
+    } catch (e: any) { return c.json({ error: formatError(e) }, 500); }
+});
+
 app.post('/catalogos/grupos', async (c) => {
     try {
         const { nombre, vida_util, observaciones, registrado_por } = await c.req.json();
@@ -426,6 +491,13 @@ app.delete('/catalogos/grupos/:id', async (c) => {
 });
 
 // Ubicaciones Físicas
+app.get('/catalogos/ubicaciones', async (c) => {
+    try {
+        const res = await getDB(c)!.prepare('SELECT * FROM ubicacion_fisica WHERE activo = 1 ORDER BY nombre').all();
+        return c.json(res.results || []);
+    } catch (e: any) { return c.json({ error: formatError(e) }, 500); }
+});
+
 app.post('/catalogos/ubicaciones', async (c) => {
     try {
         const { nombre, direccion, observaciones, registrado_por } = await c.req.json();
@@ -442,7 +514,10 @@ app.put('/catalogos/ubicaciones/:id', async (c) => {
         await getDB(c)!.prepare('UPDATE ubicacion_fisica SET nombre = ?, direccion = ?, observaciones = ?, activo = ? WHERE id = ?')
             .bind(nombre, direccion || null, observaciones || null, activo !== undefined ? activo : 1, id).run();
         return c.json({ success: true });
-    } catch (e: any) { return c.json({ error: formatError(e) }, 400); }
+    } catch (e: any) {
+        console.error("PUT /ubicaciones ERROR:", e);
+        return c.json({ error: formatError(e) }, 400);
+    }
 });
 
 app.delete('/catalogos/ubicaciones/:id', async (c) => {
@@ -453,6 +528,13 @@ app.delete('/catalogos/ubicaciones/:id', async (c) => {
 });
 
 // Unidades
+app.get('/catalogos/unidades', async (c) => {
+    try {
+        const res = await getDB(c)!.prepare('SELECT * FROM cat_unidades WHERE activo = 1 ORDER BY nombre').all();
+        return c.json(res.results || []);
+    } catch (e: any) { return c.json({ error: formatError(e) }, 500); }
+});
+
 app.post('/catalogos/unidades', async (c) => {
     try {
         const { nombre, ubicacion_fisica_id } = await c.req.json();
@@ -480,6 +562,13 @@ app.delete('/catalogos/unidades/:id', async (c) => {
 });
 
 // Oficinas
+app.get('/catalogos/oficinas', async (c) => {
+    try {
+        const res = await getDB(c)!.prepare('SELECT * FROM cat_oficinas WHERE activo = 1 ORDER BY nombre').all();
+        return c.json(res.results || []);
+    } catch (e: any) { return c.json({ error: formatError(e) }, 500); }
+});
+
 app.post('/catalogos/oficinas', async (c) => {
     try {
         const { nombre, unidad_id } = await c.req.json();
@@ -507,6 +596,13 @@ app.delete('/catalogos/oficinas/:id', async (c) => {
 });
 
 // Pisos
+app.get('/catalogos/pisos', async (c) => {
+    try {
+        const res = await getDB(c)!.prepare('SELECT * FROM cat_pisos WHERE activo = 1 ORDER BY numero').all();
+        return c.json(res.results || []);
+    } catch (e: any) { return c.json({ error: formatError(e) }, 500); }
+});
+
 app.post('/catalogos/pisos', async (c) => {
     try {
         const { numero } = await c.req.json();
@@ -623,12 +719,15 @@ app.get('/activos/usuario/:id', async (c) => {
 
 app.post('/activos', async (c) => {
     try {
-        const db = getDB(c)!;
+        const db = requireMutationDB(c);
+        if (!db) return c.json({ error: 'Selección requerida', message: 'No se puede registrar activos en modo CONSOLIDADO. Seleccione una institución específica (Tierras, Justicia, Presidencia, etc.)' }, 400);
         const data = await c.req.json();
         const {
             codigo_activo, descripcion, serie, estado_actual,
             ubicacion_fisica_id, cat_unidad_id, cat_oficina_id, cat_piso_id,
             cat_auxiliar_id, cat_grupo_contable_id, registrado_por } = data;
+
+        const cleanId = (val: any) => (val === '' || val === undefined || val === 'undefined') ? null : val;
 
         const result = await db.prepare(`
             INSERT INTO activos (
@@ -637,9 +736,16 @@ app.post('/activos', async (c) => {
                 cat_auxiliar_id, cat_grupo_contable_id, registrado_por
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
-            codigo_activo, descripcion, estado_actual || 'Disponible',
-            ubicacion_fisica_id || null, cat_unidad_id || null, cat_oficina_id || null, cat_piso_id || null,
-            cat_auxiliar_id || null, cat_grupo_contable_id || null, registrado_por || null
+            codigo_activo,
+            descripcion,
+            estado_actual || 'Disponible',
+            cleanId(ubicacion_fisica_id),
+            cleanId(cat_unidad_id),
+            cleanId(cat_oficina_id),
+            cleanId(cat_piso_id),
+            cleanId(cat_auxiliar_id),
+            cleanId(cat_grupo_contable_id),
+            registrado_por || null
         ).run();
         const id = result.meta.last_row_id;
         await invalidateConsolidadoCache(c.env.CACHE);
@@ -648,6 +754,7 @@ app.post('/activos', async (c) => {
         return c.json({ error: formatError(e) }, 400);
     }
 });
+
 
 // Liberar activo (retornar a Disponible, sin responsable)
 app.put('/activos/:id/liberar', async (c) => {
@@ -692,6 +799,88 @@ app.put('/activos/:id', async (c) => {
     }
 });
 
+// Borrado físico de activo (Solo para sobrantes o corrección)
+app.delete('/activos/:id', async (c) => {
+    const id = c.req.param('id');
+    try {
+        const db = getDB(c);
+        if (!db) return c.json({ error: 'DB no disponible' }, 500);
+
+        // Borrar referencias primero
+        await db.batch([
+            db.prepare('DELETE FROM auditorias_fisicas WHERE activo_id = ?').bind(id),
+            db.prepare('DELETE FROM detalles_acta WHERE activo_id = ?').bind(id),
+            db.prepare('DELETE FROM activos WHERE id = ?').bind(id)
+        ]);
+
+        await invalidateConsolidadoCache(c.env.CACHE);
+        return c.json({ success: true });
+    } catch (e: any) {
+        return c.json({ error: formatError(e) }, 500);
+    }
+});
+
+// Asignación rápida desde auditoría
+app.put('/activos/:id/auditoria-asignar', async (c) => {
+    const id = c.req.param('id');
+    const {
+        descripcion, cat_auxiliar_id, cat_grupo_contable_id,
+        origen, usuario_auditado_id, realizado_por
+    } = await c.req.json();
+
+    try {
+        const db = getDB(c);
+        if (!db) return c.json({ error: 'DB no disponible' }, 500);
+
+        // 1. Obtener datos del usuario para heredar ubicación
+        const user = await db.prepare('SELECT cat_unidad_id, ubicacion_fisica_id FROM usuarios WHERE id = ?').bind(usuario_auditado_id).first();
+        if (!user) throw new Error('Usuario no encontrado');
+
+        // 2. Obtener oficina (usamos la primera oficina vinculada si tiene múltiples)
+        const office = await db.prepare('SELECT oficina_id FROM usuarios_oficinas WHERE usuario_id = ? LIMIT 1').bind(usuario_auditado_id).first();
+
+        // 3. Actualizar activo
+        await db.prepare(`
+            UPDATE activos SET 
+                descripcion = ?, 
+                cat_auxiliar_id = ?, 
+                cat_grupo_contable_id = ?, 
+                origen = ?, 
+                estado_actual = 'Asignado',
+                usuario_actual_id = ?,
+                cat_unidad_id = ?,
+                ubicacion_fisica_id = ?,
+                cat_oficina_id = ?
+            WHERE id = ?
+        `).bind(
+            descripcion,
+            cat_auxiliar_id || null,
+            cat_grupo_contable_id || null,
+            origen || 'Sobrante',
+            usuario_auditado_id,
+            (user as any).cat_unidad_id,
+            (user as any).ubicacion_fisica_id,
+            (office as any)?.oficina_id || null,
+            id
+        ).run();
+
+        // 4. Actualizar registro de auditoría a 'Correcto'
+        await db.prepare(`
+            UPDATE auditorias_fisicas 
+            SET hallazgo = 'Correcto', realizado_por = ? 
+            WHERE usuario_auditado_id = ? AND activo_id = ?
+        `).bind(realizado_por || null, usuario_auditado_id, id).run();
+
+        await invalidateConsolidadoCache(c.env.CACHE);
+        return c.json({ success: true });
+    } catch (e: any) {
+        console.error("Error auditoria-asignar:", e.message);
+        return c.json({ error: formatError(e) }, 400);
+    }
+});
+
+
+
 
 // Activos disponibles
 app.get('/activos/disponibles', async (c) => {
@@ -715,10 +904,11 @@ app.get('/activos/agrupados', async (c) => {
                 SELECT a.id, a.codigo_activo, a.descripcion, a.estado_actual,
                        uf.nombre as a_edificio, cat_au.nombre as a_unidad, cat_ao.nombre as a_oficina, cat_ap.numero as a_piso,
                        (SELECT ac.id FROM detalles_acta da JOIN actas ac ON da.acta_id = ac.id WHERE da.activo_id = a.id AND ac.tipo_acta='Asignación' ORDER BY ac.fecha_emision DESC LIMIT 1) as last_acta_id,
+                       (SELECT ac.realizado_por FROM detalles_acta da JOIN actas ac ON da.acta_id = ac.id WHERE da.activo_id = a.id AND ac.tipo_acta='Asignación' ORDER BY ac.fecha_emision DESC LIMIT 1) as realizado_por,
                        (SELECT da.estado_fisico FROM detalles_acta da JOIN actas ac ON da.acta_id = ac.id WHERE da.activo_id = a.id AND ac.tipo_acta='Asignación' ORDER BY ac.fecha_emision DESC LIMIT 1) as estado_fisico,
                        (SELECT ac2.observaciones FROM actas ac2 WHERE ac2.usuario_id = u.id AND ac2.tipo_acta='Asignación' ORDER BY ac2.fecha_emision DESC LIMIT 1) as observaciones,
                        u.id as usuario_id, u.nombre_completo, u.ci, u.cargo,
-                       uf_u.nombre as u_edificio, un_u.nombre as u_unidad,
+                       NULL as u_edificio, NULL as u_unidad,
                        (SELECT GROUP_CONCAT(off.nombre, ', ') FROM usuarios_oficinas uo JOIN cat_oficinas off ON uo.oficina_id = off.id WHERE uo.usuario_id = u.id) as u_oficinas
                 FROM activos a
                 JOIN usuarios u ON a.usuario_actual_id = u.id
@@ -726,8 +916,6 @@ app.get('/activos/agrupados', async (c) => {
                 LEFT JOIN cat_unidades cat_au ON a.cat_unidad_id = cat_au.id
                 LEFT JOIN cat_oficinas cat_ao ON a.cat_oficina_id = cat_ao.id
                 LEFT JOIN cat_pisos cat_ap ON a.cat_piso_id = cat_ap.id
-                LEFT JOIN ubicacion_fisica uf_u ON u.ubicacion_fisica_id = uf_u.id
-                LEFT JOIN cat_unidades un_u ON u.cat_unidad_id = un_u.id
                 WHERE a.estado_actual = 'Asignado'
                 ORDER BY u.nombre_completo ASC, a_oficina ASC, a.codigo_activo ASC
             `).all();
@@ -736,12 +924,16 @@ app.get('/activos/agrupados', async (c) => {
 
         let allResults = [];
         if (institution === 'consolidado') {
-            const [r1, r2, r3] = await Promise.all([
+            const promises = [
                 fetchDBAgrupados(c.env.DB, 'TIERRAS'),
                 fetchDBAgrupados(c.env.DB_JUSTICIA, 'JUSTICIA'),
                 fetchDBAgrupados(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
-            ]);
-            allResults = [...r1, ...r2, ...r3];
+            ];
+            if (c.env.DB_CULTURAS) promises.push(fetchDBAgrupados(c.env.DB_CULTURAS, 'CULTURAS'));
+            if (c.env.DB_VICEPRESIDENCIA) promises.push(fetchDBAgrupados(c.env.DB_VICEPRESIDENCIA, 'VICEPRESIDENCIA'));
+
+            const resultsArrays = await Promise.all(promises);
+            allResults = resultsArrays.flat();
         } else {
             const db = getDB(c);
             if (!db) return c.json([]);
@@ -795,6 +987,7 @@ app.get('/activos/agrupados', async (c) => {
                 estado_actual: row.estado_actual,
                 estado_fisico: row.estado_fisico || 'Bueno',
                 last_acta_id: row.last_acta_id,
+                realizado_por: row.realizado_por,
                 institucion: row.institucion
             });
         }
@@ -807,6 +1000,22 @@ app.get('/activos/agrupados', async (c) => {
         return c.json(resultadoFinal);
     } catch (e: any) {
         console.error("Error en /activos/agrupados:", e.message);
+        return c.json({ error: formatError(e) }, 500);
+    }
+});
+
+// Activo por ID
+app.get('/activos/:id', async (c) => {
+    let db: any = getDB(c);
+    if (db === 'CONSOLIDADO') db = c.env.DB; // En Tierras por defecto o manejar según necesite
+    if (!db) return c.json({ error: 'DB no disponible' }, 500);
+
+    const id = c.req.param('id');
+    try {
+        const { results } = await db.prepare('SELECT * FROM activos WHERE id = ?').bind(id).all();
+        if (results.length === 0) return c.json({ error: 'Activo no encontrado' }, 404);
+        return c.json(results[0]);
+    } catch (e: any) {
         return c.json({ error: formatError(e) }, 500);
     }
 });
@@ -840,12 +1049,16 @@ app.get('/actas', async (c) => {
         };
 
         if (institution === 'consolidado') {
-            const [r1, r2, r3] = await Promise.all([
+            const promises = [
                 fetchActasFromDB(c.env.DB, 'TIERRAS'),
                 fetchActasFromDB(c.env.DB_JUSTICIA, 'JUSTICIA'),
                 fetchActasFromDB(c.env.DB_PRESIDENCIA, 'PRESIDENCIA')
-            ]);
-            return c.json([...r1, ...r2, ...r3].sort((a: any, b: any) =>
+            ];
+            if (c.env.DB_CULTURAS) promises.push(fetchActasFromDB(c.env.DB_CULTURAS, 'CULTURAS'));
+            if (c.env.DB_VICEPRESIDENCIA) promises.push(fetchActasFromDB(c.env.DB_VICEPRESIDENCIA, 'VICEPRESIDENCIA'));
+
+            const resultsArrays = await Promise.all(promises);
+            return c.json(resultsArrays.flat().sort((a: any, b: any) =>
                 new Date(b.fecha_emision).getTime() - new Date(a.fecha_emision).getTime()
             ));
         }
@@ -875,7 +1088,16 @@ app.post('/actas', async (c) => {
     let actaId = appendToActaId;
 
     try {
-        const db = getDB(c)!;
+        const institution = (c.req.header('x-institution') || '').toLowerCase();
+        const db = getDB(c);
+        if (!db) {
+            return c.json({
+                error: 'Operación no permitida',
+                message: institution === 'consolidado'
+                    ? 'No se puede generar un acta en modo CONSOLIDADO. Por favor seleccione una institución específica (Tierras, Justicia, Presidencia, etc.)'
+                    : 'No se pudo identificar la base de datos para esta institución. Verifique que la institución esté correctamente configurada.'
+            }, 400);
+        }
         if (!actaId) {
             // 1. Crear el acta con snapshot de ubicación si no hay ID de acta para aumentar
             const batchResult = await db.batch([
@@ -991,7 +1213,50 @@ app.post('/migrate', async (c) => {
             }
         }
 
-        // 2. FUNCIÓN DE FORMATO
+        // 2. CARGA DE CATÁLOGOS PARA RESOLUCIÓN DE NOMBRES (Cache en memoria por request)
+        const ubisMap = new Map<string, number>();
+        const unitsMap = new Map<string, number>();
+        const officesMap = new Map<string, number>();
+        const floorsMap = new Map<string, number>();
+        const auxsMap = new Map<string, number>();
+        const groupsMap = new Map<string, number>();
+
+        if (type === 'full' || type === 'assets' || type === 'users' || type === 'auxiliares') {
+            const [u, un, of, fl, aux, grp] = await Promise.all([
+                db.prepare('SELECT id, nombre FROM ubicacion_fisica').all(),
+                db.prepare('SELECT id, nombre FROM cat_unidades').all(),
+                db.prepare('SELECT id, nombre FROM cat_oficinas').all(),
+                db.prepare('SELECT id, numero FROM cat_pisos').all(),
+                db.prepare('SELECT id, nombre FROM cat_auxiliares').all(),
+                db.prepare('SELECT id, nombre FROM cat_grupos_contables').all()
+            ]);
+            u.results?.forEach((r: any) => ubisMap.set(String(r.nombre).trim().toLowerCase(), r.id));
+            un.results?.forEach((r: any) => unitsMap.set(String(r.nombre).trim().toLowerCase(), r.id));
+            of.results?.forEach((r: any) => officesMap.set(String(r.nombre).trim().toLowerCase(), r.id));
+            fl.results?.forEach((r: any) => floorsMap.set(String(r.numero).trim().toLowerCase(), r.id));
+            aux.results?.forEach((r: any) => auxsMap.set(String(r.nombre).trim().toLowerCase(), r.id));
+            grp.results?.forEach((r: any) => groupsMap.set(String(r.nombre).trim().toLowerCase(), r.id));
+        }
+
+        // Helper para resolver o crear catálogo simple (Pisos, Auxiliares, etc.)
+        const resolveCatalog = async (table: string, col: string, val: string, cache: Map<string, number>): Promise<number | null> => {
+            if (!val) return null;
+            const v = String(val).trim();
+            const vk = v.toLowerCase();
+            if (cache.has(vk)) return cache.get(vk)!;
+            try {
+                const res = await db.prepare(`INSERT OR IGNORE INTO ${table} (${col}) VALUES (?) RETURNING id`).bind(v).first();
+                let id = res?.id;
+                if (!id) {
+                    const existing = await db.prepare(`SELECT id FROM ${table} WHERE ${col} = ?`).bind(v).first();
+                    id = existing?.id;
+                }
+                if (id) cache.set(vk, id);
+                return id || null;
+            } catch { return null; }
+        };
+
+        // 3. FUNCIÓN DE FORMATO
         const formatEstado = (est: string, hasUser: boolean) => {
             if (!est) return hasUser ? 'Asignado' : 'Disponible';
             const e = est.trim().toLowerCase();
@@ -1000,7 +1265,7 @@ app.post('/migrate', async (c) => {
             return 'Disponible';
         };
 
-        // 3. PROCESAMIENTO E INSERCIONES EN LOTES (Batch MAX 80 para no superar el límite de 100 de D1)
+        // 4. PROCESAMIENTO E INSERCIONES EN LOTES
         const BATCH_SIZE = 80;
 
         for (let i = 0; i < data.length; i += BATCH_SIZE) {
@@ -1009,51 +1274,69 @@ app.post('/migrate', async (c) => {
             const assetStatements: any[] = [];
             const catalogStatements: any[] = [];
 
-            // a) Primera pasada: Identificar y preparar creación de NUEVOS usuarios de este lote
-            // Usamos un Set temporal para no intentar crear el mismo usuario dos veces en el mismo lote
+            // a) Usuarios con resolución de Ubicación y Unidad
             const newUsersInBatch = new Set<string>();
-
             for (const item of batch) {
-                if (!item.responsable_ci) continue;
-                const ciStr = String(item.responsable_ci).trim();
+                if (!item.responsable_ci && !item.ci) continue;
+                const ciStr = String(item.responsable_ci || item.ci).trim();
+                const nombre = item.responsable_nombre || item.nombre_completo || 'S/N';
 
                 if (!usuariosMap.has(ciStr) && !newUsersInBatch.has(ciStr) && (type === 'full' || type === 'users')) {
+                    // Resolución de ubicación y unidad para el usuario
+                    const uId = await resolveCatalog('ubicacion_fisica', 'nombre', item.edificio, ubisMap);
+                    const unId = await resolveCatalog('cat_unidades', 'nombre', item.unidad, unitsMap);
+
                     userStatements.push(
-                        db.prepare(
-                            'INSERT INTO usuarios (nombre_completo, ci, cargo) VALUES (?, ?, ?) RETURNING id, ci'
-                        ).bind(
-                            item.responsable_nombre || 'S/N',
-                            ciStr,
-                            item.responsable_cargo || null
-                        )
+                        db.prepare('INSERT INTO usuarios (nombre_completo, ci, cargo, ubicacion_fisica_id, cat_unidad_id) VALUES (?, ?, ?, ?, ?)')
+                            .bind(nombre, ciStr, item.responsable_cargo || item.cargo || null, uId, unId)
                     );
                     newUsersInBatch.add(ciStr);
                 }
             }
 
-            // Si hay usuarios nuevos en este lote, los insertamos en un batch primero y actualizamos el Map
             if (userStatements.length > 0) {
                 try {
-                    const userBatchResults = await db.batch(userStatements);
-                    userBatchResults.forEach(res => {
-                        if (res.results && res.results.length > 0) {
-                            const inserted = res.results[0] as any;
-                            usuariosMap.set(String(inserted.ci).trim(), inserted.id);
-                            results.created_users++;
-                        }
+                    await db.batch(userStatements);
+                    // IMPORTANTE: Después de insertar usuarios, necesitamos sus IDs reales para el mapeo de activos
+                    const { results: usuariosExtraidos } = await db.prepare('SELECT id, ci FROM usuarios').all();
+                    usuariosExtraidos?.forEach((u: any) => {
+                        if (u.ci) usuariosMap.set(String(u.ci).trim(), u.id);
                     });
-                } catch (e: any) {
-                    console.error("Error insertando batch de usuarios:", e.message);
-                    // Si falla el batch completo, marcamos como error pero intentamos seguir con los activos que tengan ID
-                }
+                    results.created_users += userStatements.length;
+                } catch (e: any) { console.error("Error usuarios:", e.message); }
             }
 
-            // b) Segunda pasada: Preparar creación de ACTIVOS de este lote
+            // b) Activos con resolución de catálogos completa (Estructura 4NF)
             if (type === 'full' || type === 'assets') {
                 for (const item of batch) {
                     try {
                         const ciStr = item.responsable_ci ? String(item.responsable_ci).trim() : null;
                         const userId = ciStr ? usuariosMap.get(ciStr) || null : null;
+
+                        // Resolución Inteligente de IDs por nombre
+                        const uId = await resolveCatalog('ubicacion_fisica', 'nombre', item.edificio || item.ubicacion, ubisMap);
+                        const unId = await resolveCatalog('cat_unidades', 'nombre', item.unidad, unitsMap);
+                        const ofId = await resolveCatalog('cat_oficinas', 'nombre', item.oficina, officesMap);
+                        const flId = await resolveCatalog('cat_pisos', 'numero', item.piso, floorsMap);
+                        const grpId = await resolveCatalog('cat_grupos_contables', 'nombre', item.grupo_contable, groupsMap);
+
+                        // Para auxiliares, incluimos el grupo si es nuevo
+                        let auxId = null;
+                        if (item.auxiliar) {
+                            const vk = String(item.auxiliar).trim().toLowerCase();
+                            if (auxsMap.has(vk)) {
+                                auxId = auxsMap.get(vk);
+                            } else {
+                                // Crear con el grupo resuelto
+                                try {
+                                    const res = await db.prepare('INSERT OR IGNORE INTO cat_auxiliares (nombre, cat_grupo_contable_id) VALUES (?, ?) RETURNING id')
+                                        .bind(String(item.auxiliar).trim(), grpId).first();
+                                    auxId = res?.id;
+                                    if (!auxId) auxId = (await db.prepare('SELECT id FROM cat_auxiliares WHERE nombre = ?').bind(String(item.auxiliar).trim()).first())?.id;
+                                    if (auxId) auxsMap.set(vk, auxId);
+                                } catch { /* ignore */ }
+                            }
+                        }
 
                         assetStatements.push(
                             db.prepare(`
@@ -1067,26 +1350,23 @@ app.post('/migrate', async (c) => {
                                 item.descripcion,
                                 formatEstado(item.estado_actual, !!userId),
                                 userId,
-                                item.ubicacion_fisica_id || null,
-                                item.cat_unidad_id || null,
-                                item.cat_oficina_id || null,
-                                item.cat_piso_id || null,
-                                item.cat_auxiliar_id || null,
-                                item.cat_grupo_contable_id || null
+                                uId || item.ubicacion_fisica_id || null,
+                                unId || item.cat_unidad_id || null,
+                                ofId || item.cat_oficina_id || null,
+                                flId || item.cat_piso_id || null,
+                                auxId || item.cat_auxiliar_id || null,
+                                grpId || item.cat_grupo_contable_id || null
                             )
                         );
-                    } catch (err) {
-                        results.failed++;
-                    }
+                    } catch (err) { results.failed++; }
                 }
 
-                // Insertar lote de activos
                 if (assetStatements.length > 0) {
                     try {
                         await db.batch(assetStatements);
                         results.created_assets += assetStatements.length;
                     } catch (e: any) {
-                        console.error("Error insertando batch de activos:", e.message);
+                        console.error("Error activos:", e.message);
                         results.failed += assetStatements.length;
                     }
                 }
@@ -1102,7 +1382,9 @@ app.post('/migrate', async (c) => {
                             catalogStatements.push(db.prepare('INSERT OR IGNORE INTO ubicacion_fisica (nombre, direccion, observaciones) VALUES (?, ?, ?)')
                                 .bind(item.nombre, item.direccion || null, item.observaciones || null));
                         } else if (type === 'auxiliares') {
-                            catalogStatements.push(db.prepare('INSERT OR IGNORE INTO cat_auxiliares (nombre) VALUES (?)').bind(item.nombre));
+                            const grpId = await resolveCatalog('cat_grupos_contables', 'nombre', item.grupo_contable, groupsMap);
+                            catalogStatements.push(db.prepare('INSERT OR IGNORE INTO cat_auxiliares (nombre, cat_grupo_contable_id) VALUES (?, ?)')
+                                .bind(String(item.nombre).trim(), grpId));
                         } else if (type === 'grupos') {
                             catalogStatements.push(db.prepare('INSERT OR IGNORE INTO cat_grupos_contables (nombre, vida_util, observaciones) VALUES (?, ?, ?)')
                                 .bind(item.nombre, item.vida_util || null, item.observaciones || null));
@@ -1164,20 +1446,14 @@ app.post('/migrate', async (c) => {
 app.get('/actas/:id', async (c) => {
     try {
         const id = c.req.param('id');
-        const targetInst = c.req.header('x-target-institution') || c.req.header('x-institution') || 'tierras';
-
-        let db: D1Database | undefined;
-        const inst = targetInst.toLowerCase();
-        if (inst === 'justicia') db = c.env.DB_JUSTICIA;
-        else if (inst === 'presidencia') db = c.env.DB_PRESIDENCIA;
-        else db = c.env.DB;
+        const db = getDB(c);
 
         if (!db) return c.json({ error: 'DB no encontrada' }, 500);
 
         const acta = await db.prepare(`
             SELECT a.*, u.nombre_completo, u.ci, u.cargo,
-                   COALESCE(uf.nombre, uf_u.nombre) as edificio,
-                   COALESCE(cat_au.nombre, un_u.nombre) as unidad,
+                   uf.nombre as edificio,
+                   cat_au.nombre as unidad,
                    COALESCE(cat_ao.nombre, (SELECT GROUP_CONCAT(off.nombre, ', ') FROM usuarios_oficinas uo JOIN cat_oficinas off ON uo.oficina_id = off.id WHERE uo.usuario_id = u.id)) as oficina,
                    cat_ap.numero as piso
             FROM actas a
@@ -1186,8 +1462,6 @@ app.get('/actas/:id', async (c) => {
             LEFT JOIN cat_unidades cat_au ON a.cat_unidad_id = cat_au.id
             LEFT JOIN cat_oficinas cat_ao ON a.cat_oficina_id = cat_ao.id
             LEFT JOIN cat_pisos cat_ap ON a.cat_piso_id = cat_ap.id
-            LEFT JOIN ubicacion_fisica uf_u ON u.ubicacion_fisica_id = uf_u.id
-            LEFT JOIN cat_unidades un_u ON u.cat_unidad_id = un_u.id
             WHERE a.id = ?
         `).bind(id).first();
 
@@ -1261,15 +1535,9 @@ app.get('/auditorias/usuario/:id', async (c) => {
 app.post('/auditorias', async (c) => {
     const body = await c.req.json();
     const { usuario_auditado_id, activo_id, hallazgo, realizado_por, institucion, observacion } = body;
-    const targetInst = institucion || c.req.header('x-target-institution') || c.req.header('x-institution') || 'tierras';
 
     try {
-        let db: D1Database | undefined;
-        const inst = targetInst.toLowerCase();
-        if (inst === 'justicia') db = c.env.DB_JUSTICIA;
-        else if (inst === 'presidencia') db = c.env.DB_PRESIDENCIA;
-        else db = c.env.DB;
-
+        const db = getDB(c);
         if (!db) return c.json({ error: 'DB no disponible' }, 500);
 
         try {
@@ -1292,15 +1560,8 @@ app.post('/auditorias', async (c) => {
 // Limpiar auditoría de un usuario (para reiniciar el proceso)
 app.delete('/auditorias/usuario/:id', async (c) => {
     const userId = c.req.param('id');
-    const targetInst = c.req.header('x-target-institution') || c.req.header('x-institution') || 'tierras';
-
     try {
-        let db: D1Database | undefined;
-        const inst = targetInst.toLowerCase();
-        if (inst === 'justicia') db = c.env.DB_JUSTICIA;
-        else if (inst === 'presidencia') db = c.env.DB_PRESIDENCIA;
-        else db = c.env.DB;
-
+        const db = getDB(c);
         if (!db) return c.json({ error: 'DB no disponible' }, 500);
 
         await db.prepare('DELETE FROM auditorias_fisicas WHERE usuario_auditado_id = ?').bind(userId).run();
@@ -1311,7 +1572,7 @@ app.delete('/auditorias/usuario/:id', async (c) => {
 });
 
 // Borrar un ítem específico de la auditoría
-app.delete('/api/auditorias/usuario/:userId/activo/:activoId', async (c) => {
+app.delete('/auditorias/usuario/:userId/activo/:activoId', async (c) => {
     const userId = c.req.param('userId');
     const activoId = c.req.param('activoId');
     try {
@@ -1587,16 +1848,20 @@ app.post('/system-users', async (c) => {
 
         const statements: any[] = [];
         targetInsts.forEach((inst: string) => {
-            let db: D1Database;
+            let db: D1Database | undefined;
             const i = inst.toLowerCase();
             if (i === 'justicia') db = c.env.DB_JUSTICIA;
             else if (i === 'presidencia') db = c.env.DB_PRESIDENCIA;
+            else if (i === 'culturas') db = c.env.DB_CULTURAS;
+            else if (i === 'vicepresidencia') db = c.env.DB_VICEPRESIDENCIA;
             else db = c.env.DB;
 
-            statements.push({
-                db,
-                stmt: db.prepare('INSERT OR REPLACE INTO system_users (username, nombre, password_hash, rol, activo) VALUES (?, ?, ?, ?, ?)').bind(username.toLowerCase().trim(), nombre, hash, rol || 'tecnico', 1)
-            });
+            if (db) {
+                statements.push({
+                    db,
+                    stmt: db.prepare('INSERT OR REPLACE INTO system_users (username, nombre, password_hash, rol, activo) VALUES (?, ?, ?, ?, ?)').bind(username.toLowerCase().trim(), nombre, hash, rol || 'tecnico', 1)
+                });
+            }
         });
 
         // Ejecutar en paralelo (D1 batch solo funciona sobre la misma DB, así que hacemos Promise.all de runs)

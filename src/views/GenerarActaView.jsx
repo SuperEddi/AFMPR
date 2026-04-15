@@ -14,7 +14,11 @@ import { AppDialog, useDialog } from '../components/AppDialog';
 const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleActivoDevolucion, seleccionarTodos, reasignaciones, setReasignacion, usuarios, authFetch, fetchUsuarios, catalogos, onRegisterRequest }) => {
     const [busquedas, setBusquedas] = useState({});       // { activoId: 'texto' }
     const [creandoPara, setCreandoPara] = useState(null);  // activoId para el que se crea user
-    const [nuevoUser, setNuevoUser] = useState({ nombre_completo: '', ci: '', cargo: '', cat_unidad_id: '', oficinas_ids: [] });
+    const [nuevoUser, setNuevoUser] = useState({
+        nombre_completo: '', ci: '', cargo: '',
+        ubicacion_fisica_id: '', cat_unidad_id: '', cat_oficina_id: '', cat_piso_id: '',
+        oficinas_ids: []
+    });
     const [guardando, setGuardando] = useState(false);
     const { showAlert: subShowAlert, dialogProps: subDialogProps } = useDialog();
     const [filtroActivos, setFiltroActivos] = useState('');
@@ -28,13 +32,18 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
         if (!nuevoUser.nombre_completo || !nuevoUser.ci) { await subShowAlert('El nombre completo y el CI son obligatorios.', { title: 'Campos requeridos', type: 'warning' }); return; }
         setGuardando(true);
         try {
-            const res = await authFetch('/api/usuarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(nuevoUser) });
+            const payload = { ...nuevoUser, registrado_por: currentUser?.nombre };
+            const res = await authFetch('/api/usuarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const data = await res.json();
             if (data.success) {
                 setReasignacion(activoId, data.user);
                 fetchUsuarios();
                 setCreandoPara(null);
-                setNuevoUser({ nombre_completo: '', ci: '', cargo: '', cat_unidad_id: '', oficinas_ids: [] });
+                setNuevoUser({
+                    nombre_completo: '', ci: '', cargo: '',
+                    ubicacion_fisica_id: '', cat_unidad_id: '', cat_oficina_id: '', cat_piso_id: '',
+                    oficinas_ids: []
+                });
             } else { await subShowAlert(data.error || 'Error al crear responsable.', { title: 'Error', type: 'error' }); }
         } catch { await subShowAlert('Error de conexión.', { title: 'Error de red', type: 'error' }); } finally { setGuardando(false); }
     };
@@ -42,7 +51,7 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
     return (
         <div className="space-y-3">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-                <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 flex items-center gap-2">
+                <p className="text-[10px] font-semibold text-orange-600 uppercase tracking-widest bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 flex items-center gap-2">
                     <Package size={14} /> Activos a Devolver
                 </p>
                 <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -50,12 +59,12 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
                         <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
                             placeholder="Filtrar activos..."
-                            className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold outline-none focus:ring-2 focus:ring-orange-500/20"
+                            className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-semibold outline-none focus:ring-2 focus:ring-orange-500/20"
                             value={filtroActivos}
                             onChange={e => setFiltroActivos(e.target.value)}
                         />
                     </div>
-                    <button onClick={seleccionarTodos} className="text-[10px] font-black text-orange-600 bg-orange-50 border border-orange-100 px-3 py-1.5 rounded-xl whitespace-nowrap active:scale-95 transition-all">
+                    <button onClick={seleccionarTodos} className="text-[10px] font-semibold text-orange-600 bg-orange-50 border border-orange-100 px-3 py-1.5 rounded-xl whitespace-nowrap active:scale-95 transition-all">
                         Seleccionar Todos
                     </button>
                 </div>
@@ -79,7 +88,7 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
                                     {seleccionado && <CheckCircle size={13} className="text-white" />}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="font-mono font-bold text-xs text-slate-800">{a.codigo_activo}</div>
+                                    <div className="font-mono font-semibold text-xs text-slate-800">{a.codigo_activo}</div>
                                     <div className="text-[10px] text-slate-400 leading-relaxed font-medium">{a.descripcion}</div>
                                 </div>
                             </div>
@@ -91,7 +100,7 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
                                         // Ya tiene responsable asignado
                                         <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
                                             <div>
-                                                <p className="text-[10px] font-black text-emerald-700 uppercase">{asignado.nombre_completo}</p>
+                                                <p className="text-[10px] font-semibold text-emerald-700 uppercase">{asignado.nombre_completo}</p>
                                                 <p className="text-[9px] text-emerald-500">CI: {asignado.ci} · {asignado.cargo}</p>
                                             </div>
                                             <button onClick={() => { setReasignacion(a.id, null); setBusquedas(p => ({ ...p, [a.id]: '' })); }} className="text-emerald-400 hover:text-red-500">
@@ -101,48 +110,102 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
                                     ) : creandoPara === a.id ? (
                                         // Formulario para crear nuevo responsable
                                         <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
-                                            <p className="text-[9px] font-black text-blue-600 uppercase">Nuevo Responsable</p>
+                                            <p className="text-[9px] font-semibold text-blue-600 uppercase">Nuevo Responsable</p>
                                             <div className="grid grid-cols-2 gap-2">
                                                 <input placeholder="Nombre completo *" className="col-span-2 px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white" value={nuevoUser.nombre_completo} onChange={e => setNuevoUser(p => ({ ...p, nombre_completo: e.target.value }))} />
                                                 <input placeholder="CI *" className="px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white" value={nuevoUser.ci} onChange={e => setNuevoUser(p => ({ ...p, ci: e.target.value }))} />
                                                 <input placeholder="Cargo" className="px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white" value={nuevoUser.cargo} onChange={e => setNuevoUser(p => ({ ...p, cargo: e.target.value }))} />
-                                                <div className="col-span-2 space-y-2">
-                                                    <label className="text-[9px] font-bold text-slate-400 uppercase">Ubicación Física (Edificio)</label>
-                                                    <QuickAddSelect
-                                                        options={catalogos.ubicaciones}
-                                                        value={nuevoUser.ubicacion_fisica_id}
-                                                        onChange={id => setNuevoUser(p => ({ ...p, ubicacion_fisica_id: id, cat_unidad_id: '' }))}
-                                                        onRegisterRequest={val => onRegisterRequest('ubicacion', val, { target: 'user' })}
-                                                        placeholder="Buscar o registrar Edificio..."
-                                                    />
-                                                </div>
-                                                <div className="col-span-2 space-y-2">
-                                                    <label className="text-[9px] font-bold text-slate-400 uppercase">Unidad</label>
-                                                    <QuickAddSelect
-                                                        options={catalogos.unidades.filter(u => !nuevoUser.ubicacion_fisica_id || u.ubicacion_fisica_id === Number(nuevoUser.ubicacion_fisica_id))}
-                                                        value={nuevoUser.cat_unidad_id}
-                                                        onChange={id => setNuevoUser(p => ({ ...p, cat_unidad_id: id }))}
-                                                        onRegisterRequest={val => onRegisterRequest('unidad', val, { target: 'user', ubicacion_fisica_id: nuevoUser.ubicacion_fisica_id })}
-                                                        placeholder="Buscar o registrar Unidad..."
-                                                        disabled={!nuevoUser.ubicacion_fisica_id}
-                                                    />
-                                                </div>
-                                                <div className="col-span-2 max-h-24 overflow-y-auto border border-slate-100 rounded-lg p-2 bg-white">
-                                                    <p className="text-[8px] font-black uppercase text-slate-400 mb-1">Oficinas</p>
-                                                    {catalogos.oficinas.map(of => (
-                                                        <label key={of.id} className="flex items-center gap-2 text-[10px] py-0.5 cursor-pointer hover:bg-slate-50">
-                                                            <input type="checkbox" checked={nuevoUser.oficinas_ids.includes(of.id)} onChange={e => {
-                                                                const ids = e.target.checked ? [...nuevoUser.oficinas_ids, of.id] : nuevoUser.oficinas_ids.filter(x => x !== of.id);
-                                                                setNuevoUser(p => ({ ...p, oficinas_ids: ids }));
-                                                            }} />
-                                                            {of.nombre}
-                                                        </label>
-                                                    ))}
+                                                <div className="col-span-2 space-y-3">
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div className="space-y-1">
+                                                            <label className="text-[8px] font-bold text-slate-400 uppercase">1. Edificio</label>
+                                                            <QuickAddSelect
+                                                                options={catalogos.ubicaciones}
+                                                                value={nuevoUser.ubicacion_fisica_id}
+                                                                onChange={id => setNuevoUser(p => ({ ...p, ubicacion_fisica_id: id, cat_unidad_id: '', cat_oficina_id: '' }))}
+                                                                onRegisterRequest={val => onRegisterRequest('ubicacion', val, { target: 'user' })}
+                                                                placeholder="Edificio..."
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-[8px] font-bold text-slate-400 uppercase">2. Unidad</label>
+                                                            <QuickAddSelect
+                                                                options={catalogos.unidades.filter(u => !nuevoUser.ubicacion_fisica_id || u.ubicacion_fisica_id === Number(nuevoUser.ubicacion_fisica_id))}
+                                                                value={nuevoUser.cat_unidad_id}
+                                                                onChange={id => setNuevoUser(p => ({ ...p, cat_unidad_id: id, cat_oficina_id: '' }))}
+                                                                onRegisterRequest={val => onRegisterRequest('unidad', val, { target: 'user', ubicacion_fisica_id: nuevoUser.ubicacion_fisica_id })}
+                                                                placeholder="Unidad..."
+                                                                disabled={!nuevoUser.ubicacion_fisica_id}
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div className="space-y-1">
+                                                            <label className="text-[8px] font-bold text-slate-400 uppercase">3. Oficina</label>
+                                                            <div className="flex gap-1">
+                                                                <div className="flex-1">
+                                                                    <QuickAddSelect
+                                                                        options={catalogos.oficinas.filter(o => !nuevoUser.cat_unidad_id || o.unidad_id === Number(nuevoUser.cat_unidad_id))}
+                                                                        value={nuevoUser.cat_oficina_id}
+                                                                        onChange={id => setNuevoUser(p => ({ ...p, cat_oficina_id: id }))}
+                                                                        onRegisterRequest={val => onRegisterRequest('oficina', val, { target: 'user', unidad_id: nuevoUser.cat_unidad_id })}
+                                                                        placeholder="Oficina..."
+                                                                        disabled={!nuevoUser.cat_unidad_id}
+                                                                    />
+                                                                </div>
+                                                                <button
+                                                                    disabled={!nuevoUser.cat_oficina_id}
+                                                                    onClick={() => {
+                                                                        if (nuevoUser.cat_oficina_id && !nuevoUser.oficinas_ids.includes(Number(nuevoUser.cat_oficina_id))) {
+                                                                            setNuevoUser(p => ({
+                                                                                ...p,
+                                                                                oficinas_ids: [...p.oficinas_ids, Number(p.cat_oficina_id)],
+                                                                                cat_oficina_id: ''
+                                                                            }));
+                                                                        }
+                                                                    }}
+                                                                    className="px-2 bg-blue-600 text-white rounded-lg active:scale-95 transition-all disabled:opacity-30"
+                                                                >
+                                                                    +
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-[8px] font-bold text-slate-400 uppercase">4. Piso</label>
+                                                            <QuickAddSelect
+                                                                options={catalogos.pisos}
+                                                                value={nuevoUser.cat_piso_id}
+                                                                onChange={id => setNuevoUser(p => ({ ...p, cat_piso_id: id }))}
+                                                                onRegisterRequest={val => onRegisterRequest('piso', val, { target: 'user' })}
+                                                                placeholder="Piso..."
+                                                                labelField="numero"
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="min-h-[40px] p-2 border border-slate-100 rounded-lg bg-white flex flex-wrap gap-1.5 items-start">
+                                                        {nuevoUser.oficinas_ids.length === 0 ? (
+                                                            <p className="text-[8px] text-slate-300 italic w-full text-center mt-2">Agregue oficina</p>
+                                                        ) : (
+                                                            nuevoUser.oficinas_ids.map(oid => {
+                                                                const of = catalogos.oficinas.find(x => x.id === oid);
+                                                                return (
+                                                                    <div key={oid} className="flex items-center gap-1 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100">
+                                                                        <span className="text-[9px] font-bold">{of?.nombre || 'Oficina'}</span>
+                                                                        <button onClick={() => setNuevoUser(p => ({ ...p, oficinas_ids: p.oficinas_ids.filter(x => x !== oid) }))} className="hover:text-red-500 transition-colors">
+                                                                            <XIcon size={8} />
+                                                                        </button>
+                                                                    </div>
+                                                                );
+                                                            })
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                             <div className="flex gap-2 justify-end">
-                                                <button onClick={() => setCreandoPara(null)} className="text-[10px] font-bold text-slate-400 px-3 py-1">Cancelar</button>
-                                                <button disabled={guardando} onClick={() => crearYAsignar(a.id)} className="text-[10px] font-black bg-blue-600 text-white px-3 py-1.5 rounded-lg disabled:opacity-50">
+                                                <button onClick={() => setCreandoPara(null)} className="text-[10px] font-semibold text-slate-400 px-3 py-1">Cancelar</button>
+                                                <button disabled={guardando} onClick={() => crearYAsignar(a.id)} className="text-[10px] font-semibold bg-blue-600 text-white px-3 py-1.5 rounded-lg disabled:opacity-50">
                                                     {guardando ? 'Guardando...' : 'Crear y Asignar'}
                                                 </button>
                                             </div>
@@ -163,14 +226,14 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
                                                 <div className="border border-slate-100 rounded-lg divide-y divide-slate-50 bg-white shadow-sm">
                                                     {sugerencias.map(u => (
                                                         <button key={u.id} onClick={() => { setReasignacion(a.id, u); setBusquedas(p => ({ ...p, [a.id]: '' })); }} className="w-full text-left px-3 py-2 hover:bg-orange-50 transition-colors">
-                                                            <div className="font-bold text-xs text-slate-800">{u.nombre_completo}</div>
+                                                            <div className="font-semibold text-xs text-slate-800">{u.nombre_completo}</div>
                                                             <div className="text-[9px] text-slate-400">CI: {u.ci} · {u.cargo}</div>
                                                         </button>
                                                     ))}
                                                 </div>
                                             )}
                                             {noHayResultados && (
-                                                <button onClick={() => { setCreandoPara(a.id); setNuevoUser({ nombre_completo: busq, ci: '', cargo: '', cat_unidad_id: '', oficinas_ids: [] }); }} className="flex items-center gap-2 w-full px-3 py-2 text-[10px] font-black text-blue-600 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors">
+                                                <button onClick={() => { setCreandoPara(a.id); setNuevoUser({ nombre_completo: busq, ci: '', cargo: '', cat_unidad_id: '', oficinas_ids: [] }); }} className="flex items-center gap-2 w-full px-3 py-2 text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors">
                                                     <UserPlus size={13} /> No encontrado — Crear nuevo responsable "{busq}"
                                                 </button>
                                             )}
@@ -188,7 +251,7 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
     );
 };
 
-const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, currentUser }) => {
+const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, currentUser, institution }) => {
     const [tipo, setTipo] = useState(tipoProp);
     const [step, setStep] = useState(1);
     const [usuarios, setUsuarios] = useState([]);
@@ -205,7 +268,11 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
     const [showSuggestions, setShowSuggestions] = useState(false);
     const searchRef = useRef(null);
     const [isNewUser, setIsNewUser] = useState(false);
-    const [newUserData, setNewUserData] = useState({ nombre_completo: '', ci: '', cargo: '', ubicacion_fisica_id: '', cat_unidad_id: '', oficinas_ids: [] });
+    const [newUserData, setNewUserData] = useState({
+        nombre_completo: '', ci: '', cargo: '',
+        ubicacion_fisica_id: '', cat_unidad_id: '', cat_oficina_id: '', cat_piso_id: '',
+        oficinas_ids: []
+    });
     const [reasignaciones, setReasignaciones] = useState({});
     const [printedActas, setPrintedActas] = useState([]);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -224,7 +291,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
     const [quickReg, setQuickReg] = useState({ isOpen: false, type: '', name: '', context: {} });
     const [printing, setPrinting] = useState(false);
     const [isEditingLocation, setIsEditingLocation] = useState(false);
-    const [locationEditData, setLocationEditData] = useState({ cat_unidad_id: '', cat_oficina_id: '', cat_piso_id: '' });
+    const [locationEditData, setLocationEditData] = useState({ ubicacion_fisica_id: '', cat_unidad_id: '', cat_oficina_id: '', cat_piso_id: '' });
     const [locationSaving, setLocationSaving] = useState(false);
     const [searchMode, setSearchMode] = useState('all'); // 'all', 'codigo', 'descripcion'
     const [showAppendModal, setShowAppendModal] = useState(false);
@@ -241,8 +308,10 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
         if (customContext) {
             context = customContext;
         } else {
-            if (tipo === 'unidad') context = { ubicacion_fisica_id: newAssetData.ubicacion_fisica_id };
-            if (tipo === 'oficina') context = { unidad_id: newAssetData.cat_unidad_id };
+            if (tipo === 'unidad') context = { ubicacion_fisica_id: locationEditData.ubicacion_fisica_id || newAssetData.ubicacion_fisica_id || newUserData.ubicacion_fisica_id };
+            if (tipo === 'oficina') context = { unidad_id: locationEditData.cat_unidad_id || newAssetData.cat_unidad_id || newUserData.cat_unidad_id };
+            if (isEditingLocation) context.target = 'location_edit';
+            if (isNewUser) context.target = 'new_user';
         }
         setQuickReg({ isOpen: true, type: tipo, name: nombre, context });
     };
@@ -257,6 +326,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
 
             const res = await authFetch(url, {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ...data, registrado_por: currentUser?.nombre })
             });
 
@@ -274,8 +344,11 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                 // Si el registro venía con un target específico
                 if (quickReg.context?.target === 'user') {
                     // El hijo (DevolucionConReasignacion) no puede ser actualizado directamente desde aquí fácilmente
-                    // Emitimos el evento global para que todos los interesados sepan que hay data nueva
                     window.dispatchEvent(new CustomEvent('data-updated'));
+                } else if (quickReg.context?.target === 'new_user') {
+                    setNewUserData(prev => ({ ...prev, [fieldMap[tipo]]: newItem.id }));
+                } else if (quickReg.context?.target === 'location_edit') {
+                    setLocationEditData(prev => ({ ...prev, [fieldMap[tipo]]: newItem.id }));
                 } else {
                     setNewAssetData(prev => ({ ...prev, [fieldMap[tipo]]: newItem.id }));
                 }
@@ -350,7 +423,8 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                 return;
             }
             try {
-                const res = await authFetch('/api/usuarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newUserData) });
+                const payload = { ...newUserData, registrado_por: currentUser?.nombre };
+                const res = await authFetch('/api/usuarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 const data = await res.json();
                 if (data.success) {
                     setSelectedUser(data.user);
@@ -378,8 +452,8 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
             setLoading(true);
             const res = await authFetch(`/api/actas?usuario_id=${selectedUser.id}&tipo=Asignación`);
             const actasUser = await res.json();
-            // Tomar la más reciente
-            const candidate = actasUser.sort((a, b) => b.id - a.id)[0];
+            // Tomar la más reciente (validando que sea un array)
+            const candidate = Array.isArray(actasUser) ? actasUser.sort((a, b) => b.id - a.id)[0] : null;
             if (candidate) {
                 setUltimoActa(candidate);
                 setShowAppendModal(true);
@@ -413,16 +487,16 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                         usuario_id: item.usuario_id,
                         activos_seleccionados: item.activos,
                         observaciones,
+                        ubicacion_fisica_id: selectedUser?.ubicacion_fisica_id,
                         cat_unidad_id: selectedUser?.cat_unidad_id,
                         cat_oficina_id: selectedUser?.cat_oficina_id,
                         cat_piso_id: selectedUser?.cat_piso_id,
                         appendToActaId: item.appendId,
                         realizado_por: currentUser?.nombre,
-                        institucion: selectedUser?.institucion
+                        institucion: institution || 'tierras'
                     }),
                     headers: {
-                        'Content-Type': 'application/json',
-                        'x-target-institution': selectedUser?.institucion
+                        'Content-Type': 'application/json'
                     }
                 });
 
@@ -454,39 +528,45 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
         if (e) e.preventDefault();
         setAssetSaving(true);
         try {
+            // Si estamos en modo CONSOLIDADO, redirigir a la institución del usuario seleccionado
+            const targetInst = selectedUser?.institucion &&
+                selectedUser.institucion !== 'undefined' &&
+                selectedUser.institucion !== 'null'
+                ? { 'x-target-institution': selectedUser.institucion.toLowerCase() }
+                : {};
+
             const res = await authFetch('/api/activos', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...targetInst },
                 body: JSON.stringify(newAssetData)
             });
             const data = await res.json();
             if (res.ok) {
-                setActivosSeleccionados(prev => [...prev, { ...newAsset, estado_fisico: 'Regular' }]);
+                // BUG FIXED: data.activo instead of newAsset
+                setActivosSeleccionados(prev => [...prev, { ...data.activo, estado_fisico: 'Regular' }]);
                 setShowNewAssetModal(false);
                 setNewAssetData({
                     codigo_activo: '', descripcion: '', estado_actual: 'Disponible',
-                    cat_unidad_id: '', cat_oficina_id: '', cat_piso_id: '',
                     cat_auxiliar_id: '', cat_grupo_contable_id: ''
                 });
                 fetchActivosDisponibles();
                 window.dispatchEvent(new CustomEvent('data-updated'));
             } else {
-                await showAlert(data.error || 'Error al registrar el activo.', { title: 'Error', type: 'error' });
+                await showAlert(data.message || data.error || 'Error al registrar el activo.', { title: 'Error', type: 'error' });
             }
         } catch {
             await showAlert('Error de conexión al registrar el activo.', { title: 'Error de red', type: 'error' });
         } finally {
             setAssetSaving(false);
+
         }
     };
 
     const handleSnapshotLocation = () => {
-        // En lugar de guardar en la DB global, actualizamos el estado local del objeto usuario
-        // para que se use en la creación del acta.
         const updatedUser = {
             ...selectedUser,
             ...locationEditData,
-            // Mantener compatibilidad visual (opcional si queremos ver los nombres de inmediato)
+            edificio: catalogos.ubicaciones.find(u => String(u.id) === String(locationEditData.ubicacion_fisica_id))?.nombre || selectedUser?.edificio,
             unidad: catalogos.unidades.find(u => String(u.id) === String(locationEditData.cat_unidad_id))?.nombre || selectedUser?.unidad,
             oficina: catalogos.oficinas.find(o => String(o.id) === String(locationEditData.cat_oficina_id))?.nombre || selectedUser?.oficina,
             piso: catalogos.pisos.find(p => String(p.id) === String(locationEditData.cat_piso_id))?.numero || selectedUser?.piso
@@ -498,6 +578,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
     const toggleLocationEdit = () => {
         if (!isEditingLocation) {
             setLocationEditData({
+                ubicacion_fisica_id: selectedUser?.ubicacion_fisica_id || '',
                 cat_unidad_id: selectedUser?.cat_unidad_id || '',
                 cat_oficina_id: selectedUser?.cat_oficina_id || '',
                 cat_piso_id: selectedUser?.cat_piso_id || ''
@@ -567,6 +648,13 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                     d.text('Zona Central - Calle Ayacucho Esq. Potosí', PW - MR, PH - 15, { align: 'right' });
                     d.text('Teléfonos: +591 (2) 2184178', PW - MR, PH - 10, { align: 'right' });
                     d.text(`Pág. ${i} / ${total}`, PW / 2, PH - 8, { align: 'center' });
+
+                    // Iniciales del creador (o actual si es nuevo)
+                    const userCreator = (typeof dataRes !== 'undefined' ? dataRes.realizado_por : null) || 'SISTEMA';
+                    const initials = userCreator.split(' ').map(n => n[0]).join('').toUpperCase();
+
+                    d.setFontSize(5.5); d.setTextColor(100, 100, 100);
+                    d.text(`USUARIO: ${initials}`, ML, PH - 20.5);
                 }
             };
 
@@ -610,13 +698,24 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                 head: [['CÓDIGO ACTIVO', 'DESCRIPCIÓN', 'ESTADO']],
                 body: (dataRes.activos || []).map(a => [
                     a.codigo_activo || '',
-                    a.descripcion || '',
+                    (a.descripcion || '').replace(/[\u00C0-\u017F]/g, chr => {
+                        const map = {
+                            '\u00D1': 'N', '\u00F1': 'n',
+                            '\u00C1': 'A', '\u00E1': 'a',
+                            '\u00C9': 'E', '\u00E9': 'e',
+                            '\u00CD': 'I', '\u00ED': 'i',
+                            '\u00D3': 'O', '\u00F3': 'o',
+                            '\u00DA': 'U', '\u00FA': 'u',
+                            '\u00DC': 'U', '\u00FC': 'u'
+                        };
+                        return map[chr] || chr;
+                    }),
                     (a.estado_fisico || 'BUENO').toUpperCase()
                 ]),
                 theme: 'grid',
-                headStyles: { fillColor: [241, 241, 241], textColor: [0, 0, 0], font: 'helvetica', fontStyle: 'bold', fontSize: 10 },
+                headStyles: { fillColor: [241, 241, 241], textColor: [0, 0, 0], font: 'helvetica', fontStyle: 'normal', fontSize: 10 },
                 bodyStyles: { font: 'helvetica', fontSize: 8, textColor: [0, 0, 0] },
-                columnStyles: { 0: { cellWidth: 40 }, 2: { cellWidth: 25, halign: 'center' } },
+                columnStyles: { 0: { cellWidth: 40, fontStyle: 'bold' }, 2: { cellWidth: 25, halign: 'center' } },
             });
             y = doc.lastAutoTable.finalY + 2;
 
@@ -662,7 +761,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
     const handlePreviewView = async (id) => {
         setPreviewLoading(true); setShowPreview(true);
         try {
-            const ar = await fetch(`/api/actas/${id}`);
+            const ar = await authFetch(`/api/actas/${id}`);
             const data = await ar.json();
             setPreviewHtml(buildCartaHtml(data));
         } catch { setPreviewHtml('Error al cargar vista previa'); } finally { setPreviewLoading(false); }
@@ -716,11 +815,11 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                 <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                         <div className={`p-2 rounded-xl text-white ${accentClasses.bg}`}>{tipo === 'Asignación' ? <FilePlus size={18} /> : <Undo2 size={18} />}</div>
-                        <div><h2 className="text-base font-black text-slate-900 leading-tight">Acta de {tipo}</h2><p className="text-slate-400 text-xs">Paso {step}</p></div>
+                        <div><h2 className="text-base font-semibold text-slate-900 leading-tight">Acta de {tipo}</h2><p className="text-slate-400 text-xs">Paso {step}</p></div>
                     </div>
                     <div className="flex items-center gap-2">
                         {[1, 2, 3].map(s => (
-                            <div key={s} className="flex items-center gap-2 text-xs font-black">
+                            <div key={s} className="flex items-center gap-2 text-xs font-semibold">
                                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${step === s ? `${accentClasses.bg} text-white` : step > s ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>{step > s ? <CheckCircle size={16} /> : s}</div>
                                 {s < 3 && <div className={`w-6 h-0.5 rounded ${step > s ? 'bg-emerald-400' : 'bg-slate-100'}`} />}
                             </div>
@@ -736,7 +835,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                     <button
                                         key={t}
                                         onClick={() => { setTipo(t); setSelectedUser(null); setIsNewUser(false); setSelectedUbicDevolucion(null); setDevUserSearch(''); }}
-                                        className={`px-4 py-2 rounded-md text-xs font-bold ${tipo === t ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
+                                        className={`px-4 py-2 rounded-md text-xs font-semibold ${tipo === t ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
                                     >
                                         {t}
                                     </button>
@@ -744,7 +843,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                 {tipo !== 'Devolución' && (
                                     <button
                                         onClick={() => { setIsNewUser(true); setSelectedUser(null); }}
-                                        className={`px-4 py-2 rounded-md text-xs font-bold ${isNewUser ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
+                                        className={`px-4 py-2 rounded-md text-xs font-semibold ${isNewUser ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
                                     >
                                         + Nuevo Funcionario
                                     </button>
@@ -786,14 +885,14 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                                             className="flex items-center gap-3 px-3 py-3 bg-slate-50 border-b border-slate-100 hover:bg-orange-50 cursor-pointer transition-colors"
                                                             title="Seleccionar todos los activos de este responsable"
                                                         >
-                                                            <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center font-black text-orange-600 text-sm flex-shrink-0">
+                                                            <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center font-semibold text-orange-600 text-sm flex-shrink-0">
                                                                 {persona.nombre_completo.charAt(0).toUpperCase()}
                                                             </div>
                                                             <div className="flex-1 min-w-0">
                                                                 <div className="flex items-center gap-2">
-                                                                    <div className="font-bold text-slate-900 text-xs truncate uppercase">{persona.nombre_completo}</div>
+                                                                    <div className="font-semibold text-slate-900 text-xs truncate uppercase">{persona.nombre_completo}</div>
                                                                     {persona.institucion && (
-                                                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${persona.institucion === 'TIERRAS' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                                        <span className={`text-[8px] font-semibold px-1.5 py-0.5 rounded border uppercase shrink-0 ${persona.institucion === 'TIERRAS' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                                                                             persona.institucion === 'JUSTICIA' ? 'bg-amber-50 text-amber-600 border-amber-100' :
                                                                                 'bg-blue-50 text-blue-600 border-blue-100'
                                                                             }`}>
@@ -801,10 +900,10 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                                                         </span>
                                                                     )}
                                                                 </div>
-                                                                <div className="text-[10px] text-slate-400 font-bold">{persona.cargo} · CI: {persona.ci}</div>
+                                                                <div className="text-[10px] text-slate-400 font-semibold">{persona.cargo} · CI: {persona.ci}</div>
                                                             </div>
                                                             <div className="flex items-center gap-2">
-                                                                <span className="text-[9px] font-black text-orange-600 bg-orange-100/50 border border-orange-200 px-2 py-1 rounded-full group-hover/item:bg-orange-600 group-hover/item:text-white transition-all">
+                                                                <span className="text-[9px] font-semibold text-orange-600 bg-orange-100/50 border border-orange-200 px-2 py-1 rounded-full group-hover/item:bg-orange-600 group-hover/item:text-white transition-all">
                                                                     {persona.total_activos || persona.ubicaciones.reduce((t, u) => t + (u.activos?.length || 0), 0)} activos
                                                                 </span>
                                                                 <ChevronRight size={14} className="text-slate-300 opacity-0 group-hover/item:opacity-100 transition-all" />
@@ -825,7 +924,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                                                 <div className="flex items-center gap-2 min-w-0">
                                                                     <MapPin size={12} className="text-slate-400 flex-shrink-0" />
                                                                     <div className="min-w-0">
-                                                                        <span className="text-xs font-bold text-slate-700 truncate block">
+                                                                        <span className="text-xs font-semibold text-slate-700 truncate block">
                                                                             {ubic.edificio ? <span className="text-indigo-600 mr-1">{ubic.edificio} —</span> : ''}
                                                                             {ubic.oficina || '—'} {ubic.piso ? `· P${ubic.piso}` : ''}
                                                                         </span>
@@ -833,7 +932,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                                                     </div>
                                                                 </div>
                                                                 <div className="flex items-center gap-2 flex-shrink-0">
-                                                                    <span className="text-[10px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                                                    <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
                                                                         {ubic.activos?.length || 0} activos
                                                                     </span>
                                                                     <ChevronRight size={14} className="text-slate-300" />
@@ -849,15 +948,25 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                             ) : !isNewUser ? (
                                 <div className="space-y-3">
                                     <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input placeholder="Buscar funcionario..." className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={userSearch} onChange={e => setUserSearch(e.target.value)} /></div>
-                                    <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
+                                    {filteredUsers.length > 0 && <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pt-2 px-1">Funcionarios Existentes Encontrados</div>}
+                                    <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 border border-slate-100 rounded-xl bg-white/50">
                                         {filteredUsers.map(u => (
-                                            <div key={u.id} onClick={() => { setSelectedUser(u); setStep(2); }} className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-slate-50 ${selectedUser?.id === u.id ? 'bg-slate-50' : ''}`}>
-                                                <div className="w-8 h-8 bg-slate-200 rounded-lg flex items-center justify-center font-bold text-slate-500 uppercase">{u.nombre_completo.charAt(0)}</div>
+                                            <div key={u.id} onClick={() => {
+                                                // Si la institución del usuario no coincide con la seleccionada, alertar y limpiar ubicación
+                                                if (u.institucion && institution && u.institucion.toLowerCase() !== institution.toLowerCase() && institution.toLowerCase() !== 'consolidado') {
+                                                    showAlert(`El funcionario pertenece a "${u.institucion}". Para asignarle activos en "${institution.toUpperCase()}", deberá definir su ubicación (Oficina/Piso) en esta institución manualmente.`, { title: 'Diferente Institución', type: 'warning' });
+                                                    setSelectedUser({ ...u, cat_unidad_id: '', ubicacion_fisica_id: '', edificio: '', unidad: '', oficina: '', piso: '' });
+                                                } else {
+                                                    setSelectedUser(u);
+                                                }
+                                                setStep(2);
+                                            }} className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-slate-50 ${selectedUser?.id === u.id ? 'bg-slate-50' : ''}`}>
+                                                <div className="w-8 h-8 bg-slate-200 rounded-lg flex items-center justify-center font-semibold text-slate-500 uppercase">{u.nombre_completo.charAt(0)}</div>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-2">
-                                                        <div className="font-bold text-slate-800 text-sm truncate uppercase">{u.nombre_completo}</div>
+                                                        <div className="font-semibold text-slate-800 text-sm truncate uppercase">{u.nombre_completo}</div>
                                                         {u.institucion && (
-                                                            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${u.institucion === 'TIERRAS' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                            <span className={`text-[8px] font-semibold px-1.5 py-0.5 rounded border uppercase shrink-0 ${u.institucion === 'TIERRAS' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                                                                 u.institucion === 'JUSTICIA' ? 'bg-amber-50 text-amber-600 border-amber-100' :
                                                                     'bg-blue-50 text-blue-600 border-blue-100'
                                                                 }`}>
@@ -865,7 +974,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <div className="text-[10px] text-slate-400 uppercase font-bold">{u.cargo} | CI: {u.ci}</div>
+                                                    <div className="text-[10px] text-slate-400 uppercase font-semibold">{u.cargo} | CI: {u.ci}</div>
                                                 </div>
                                                 <ChevronRight size={14} className="text-slate-300" />
                                             </div>
@@ -874,63 +983,129 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                 </div>
                             ) : (
                                 <div className="space-y-4">
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block flex items-center gap-1.5"><User size={12} /> Nombre Completo</label>
-                                        <input
-                                            placeholder="Ej. Juan Pérez Gómez"
-                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
-                                            value={newUserData.nombre_completo}
-                                            onChange={e => setNewUserData(p => ({ ...p, nombre_completo: e.target.value }))}
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block flex items-center gap-1.5"><Hash size={12} /> CI</label>
+                                            <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block flex items-center gap-1.5"><User size={12} /> Nombre Completo</label>
                                             <input
+                                                placeholder="Ej. Juan Pérez Gómez"
                                                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
-                                                value={newUserData.ci}
-                                                onChange={e => setNewUserData(p => ({ ...p, ci: e.target.value }))}
+                                                value={newUserData.nombre_completo}
+                                                onChange={e => setNewUserData(p => ({ ...p, nombre_completo: e.target.value }))}
                                             />
                                         </div>
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block flex items-center gap-1.5"><Briefcase size={12} /> Cargo</label>
-                                            <input
-                                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
-                                                value={newUserData.cargo}
-                                                onChange={e => setNewUserData(p => ({ ...p, cargo: e.target.value }))}
-                                            />
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block flex items-center gap-1.5"><Hash size={12} /> CI</label>
+                                                <input
+                                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                                                    value={newUserData.ci}
+                                                    onChange={e => setNewUserData(p => ({ ...p, ci: e.target.value }))}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block flex items-center gap-1.5"><Briefcase size={12} /> Cargo</label>
+                                                <input
+                                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                                                    value={newUserData.cargo}
+                                                    onChange={e => setNewUserData(p => ({ ...p, cargo: e.target.value }))}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block flex items-center gap-1.5"><Building2 size={12} /> Unidad / Departamento</label>
-                                        <select
-                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
-                                            value={newUserData.cat_unidad_id}
-                                            onChange={e => setNewUserData(p => ({ ...p, cat_unidad_id: e.target.value }))}
-                                        >
-                                            <option value="">Seleccionar Unidad...</option>
-                                            {catalogos.unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                                        </select>
-                                    </div>
-                                    <div className="space-y-4">
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block flex items-center gap-1.5"><Building2 size={12} /> Oficinas (Seleccione una o varias)</label>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-3 border border-slate-100 rounded-xl bg-slate-50/50">
-                                            {catalogos.oficinas.map(of => (
-                                                <label key={of.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-white transition-colors cursor-pointer border border-transparent hover:border-slate-100">
-                                                    <input
-                                                        type="checkbox"
-                                                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                                        checked={newUserData.oficinas_ids?.includes(of.id)}
-                                                        onChange={e => {
-                                                            const ids = e.target.checked
-                                                                ? [...(newUserData.oficinas_ids || []), of.id]
-                                                                : (newUserData.oficinas_ids || []).filter(x => x !== of.id);
-                                                            setNewUserData(p => ({ ...p, oficinas_ids: ids }));
-                                                        }}
+
+                                    <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100 space-y-4">
+                                        <p className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-2"><MapPin size={12} /> Ubicación del Funcionario (Filtro para Oficinas)</p>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">1. Edificio / Ubicación Física</label>
+                                                <QuickAddSelect
+                                                    options={catalogos.ubicaciones}
+                                                    value={newUserData.ubicacion_fisica_id}
+                                                    onChange={id => setNewUserData(p => ({ ...p, ubicacion_fisica_id: id, cat_unidad_id: '', cat_oficina_id: '' }))}
+                                                    onRegisterRequest={val => handleRegisterRequest('ubicacion', val)}
+                                                    placeholder="Seleccionar..."
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">2. Unidad</label>
+                                                <QuickAddSelect
+                                                    options={catalogos.unidades.filter(u => !newUserData.ubicacion_fisica_id || u.ubicacion_fisica_id === Number(newUserData.ubicacion_fisica_id))}
+                                                    value={newUserData.cat_unidad_id}
+                                                    onChange={id => setNewUserData(p => ({ ...p, cat_unidad_id: id, cat_oficina_id: '' }))}
+                                                    onRegisterRequest={val => handleRegisterRequest('unidad', val)}
+                                                    placeholder="Seleccionar..."
+                                                    disabled={!newUserData.ubicacion_fisica_id}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">3. Oficina</label>
+                                                    <div className="flex gap-2">
+                                                        <div className="flex-1">
+                                                            <QuickAddSelect
+                                                                options={catalogos.oficinas.filter(o => !newUserData.cat_unidad_id || o.unidad_id === Number(newUserData.cat_unidad_id))}
+                                                                value={newUserData.cat_oficina_id}
+                                                                onChange={id => setNewUserData(p => ({ ...p, cat_oficina_id: id }))}
+                                                                onRegisterRequest={val => handleRegisterRequest('oficina', val)}
+                                                                placeholder="Seleccionar..."
+                                                                disabled={!newUserData.cat_unidad_id}
+                                                            />
+                                                        </div>
+                                                        <button
+                                                            disabled={!newUserData.cat_oficina_id}
+                                                            onClick={() => {
+                                                                if (newUserData.cat_oficina_id && !newUserData.oficinas_ids.includes(Number(newUserData.cat_oficina_id))) {
+                                                                    setNewUserData(p => ({
+                                                                        ...p,
+                                                                        oficinas_ids: [...p.oficinas_ids, Number(p.cat_oficina_id)],
+                                                                        cat_oficina_id: ''
+                                                                    }));
+                                                                }
+                                                            }}
+                                                            className="px-3 bg-blue-600 text-white rounded-xl active:scale-95 transition-all disabled:opacity-30"
+                                                        >
+                                                            +
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">4. Piso (Opcional)</label>
+                                                    <QuickAddSelect
+                                                        options={catalogos.pisos}
+                                                        value={newUserData.cat_piso_id}
+                                                        onChange={id => setNewUserData(p => ({ ...p, cat_piso_id: id }))}
+                                                        onRegisterRequest={val => handleRegisterRequest('piso', val)}
+                                                        placeholder="Cualquiera..."
+                                                        labelField="numero"
                                                     />
-                                                    <span className="text-xs font-medium text-slate-700">{of.nombre}</span>
-                                                </label>
-                                            ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">Oficinas Agregadas</label>
+                                                <div className="min-h-[100px] p-3 border border-slate-200 rounded-xl bg-white flex flex-wrap gap-2 items-start content-start">
+                                                    {newUserData.oficinas_ids.length === 0 ? (
+                                                        <p className="text-[10px] text-slate-300 italic w-full text-center mt-8">Agregue al menos una oficina</p>
+                                                    ) : (
+                                                        newUserData.oficinas_ids.map(oid => {
+                                                            const of = catalogos.oficinas.find(x => x.id === oid);
+                                                            return (
+                                                                <div key={oid} className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2 py-1 rounded-lg border border-blue-100 animate-in fade-in zoom-in duration-200">
+                                                                    <span className="text-[10px] font-bold">{of?.nombre || 'Oficina'}</span>
+                                                                    <button onClick={() => setNewUserData(p => ({ ...p, oficinas_ids: p.oficinas_ids.filter(x => x !== oid) }))} className="hover:text-red-500 transition-colors">
+                                                                        <X size={10} />
+                                                                    </button>
+                                                                </div>
+                                                            );
+                                                        })
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -943,54 +1118,81 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                             <div className={`p-3 rounded-xl ${accentClasses.bgLight} border ${accentClasses.text} border-current opacity-90`}>
                                 <div className="flex items-center justify-between mb-2">
                                     <div className="min-w-0">
-                                        <p className="text-[10px] font-black uppercase opacity-60">Responsable</p>
-                                        <p className="font-black text-sm truncate uppercase">{selectedUser?.nombre_completo}</p>
-                                        <p className="text-[10px] font-bold opacity-70 truncate">{selectedUser?.cargo} | CI: {selectedUser?.ci}</p>
+                                        <p className="text-[10px] font-semibold uppercase opacity-60">Responsable</p>
+                                        <p className="font-semibold text-sm truncate uppercase">{selectedUser?.nombre_completo}</p>
+                                        <p className="text-[10px] font-semibold opacity-70 truncate">{selectedUser?.cargo} | CI: {selectedUser?.ci}</p>
                                     </div>
                                     <div className="flex gap-2">
                                         {tipo === 'Asignación' && (
-                                            <button onClick={toggleLocationEdit} className="text-[10px] font-black uppercase border border-current px-3 py-1.5 rounded-lg hover:bg-white transition-colors">
+                                            <button onClick={toggleLocationEdit} className="text-[10px] font-semibold uppercase border border-current px-3 py-1.5 rounded-lg hover:bg-white transition-colors">
                                                 {isEditingLocation ? 'Cancelar' : '＋ Oficina'}
                                             </button>
                                         )}
-                                        <button onClick={() => setStep(1)} className="text-[10px] font-black uppercase border border-current px-3 py-1.5 rounded-lg hover:bg-white transition-colors">Volver</button>
+                                        <button onClick={() => setStep(1)} className="text-[10px] font-semibold uppercase border border-current px-3 py-1.5 rounded-lg hover:bg-white transition-colors">Volver</button>
                                     </div>
                                 </div>
 
                                 {tipo === 'Asignación' && isEditingLocation ? (
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-current border-dotted">
-                                        <div>
-                                            <label className="text-[9px] font-black uppercase opacity-60 block mb-1">Unidad</label>
-                                            <select className="w-full px-2 py-1.5 text-xs rounded border border-slate-200 bg-white" value={locationEditData.cat_unidad_id} onChange={e => setLocationEditData(p => ({ ...p, cat_unidad_id: e.target.value }))}>
-                                                <option value="">Unidad...</option>
-                                                {catalogos.unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="text-[9px] font-black uppercase opacity-60 block mb-1">Oficina</label>
-                                            <select className="w-full px-2 py-1.5 text-xs rounded border border-slate-200 bg-white" value={locationEditData.cat_oficina_id} onChange={e => setLocationEditData(p => ({ ...p, cat_oficina_id: e.target.value }))}>
-                                                <option value="">Oficina...</option>
-                                                {catalogos.oficinas.map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <div className="flex-1">
-                                                <label className="text-[9px] font-black uppercase opacity-60 block mb-1">Piso</label>
-                                                <select className="w-full px-2 py-1.5 text-xs rounded border border-slate-200 bg-white" value={locationEditData.cat_piso_id} onChange={e => setLocationEditData(p => ({ ...p, cat_piso_id: e.target.value }))}>
-                                                    <option value="">Piso...</option>
-                                                    {catalogos.pisos.map(p => <option key={p.id} value={p.id}>{p.numero}</option>)}
-                                                </select>
+                                    <div className="pt-3 border-t border-current border-dotted">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                                            <div>
+                                                <label className="text-[9px] font-semibold uppercase opacity-60 block mb-1">Edificio / Ubicación Física</label>
+                                                <QuickAddSelect
+                                                    options={catalogos.ubicaciones}
+                                                    value={locationEditData.ubicacion_fisica_id}
+                                                    onChange={id => setLocationEditData(p => ({ ...p, ubicacion_fisica_id: id, cat_unidad_id: '', cat_oficina_id: '' }))}
+                                                    onRegisterRequest={val => handleRegisterRequest('ubicacion', val)}
+                                                    placeholder="Buscar o registrar Edificio..."
+                                                />
                                             </div>
-                                            <button onClick={handleSnapshotLocation} className="mt-5 bg-slate-900 text-white p-1.5 rounded-lg">
-                                                <CheckCircle size={16} />
-                                            </button>
+                                            <div>
+                                                <label className="text-[9px] font-semibold uppercase opacity-60 block mb-1">Unidad</label>
+                                                <QuickAddSelect
+                                                    options={catalogos.unidades.filter(u => !locationEditData.ubicacion_fisica_id || u.ubicacion_fisica_id === Number(locationEditData.ubicacion_fisica_id))}
+                                                    value={locationEditData.cat_unidad_id}
+                                                    onChange={id => setLocationEditData(p => ({ ...p, cat_unidad_id: id, cat_oficina_id: '' }))}
+                                                    onRegisterRequest={val => handleRegisterRequest('unidad', val)}
+                                                    placeholder="Buscar o registrar Unidad..."
+                                                    disabled={!locationEditData.ubicacion_fisica_id}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                                            <div>
+                                                <label className="text-[9px] font-semibold uppercase opacity-60 block mb-1">Oficina</label>
+                                                <QuickAddSelect
+                                                    options={catalogos.oficinas.filter(o => !locationEditData.cat_unidad_id || o.unidad_id === Number(locationEditData.cat_unidad_id))}
+                                                    value={locationEditData.cat_oficina_id}
+                                                    onChange={id => setLocationEditData(p => ({ ...p, cat_oficina_id: id }))}
+                                                    onRegisterRequest={val => handleRegisterRequest('oficina', val)}
+                                                    placeholder="Buscar o registrar Oficina..."
+                                                    disabled={!locationEditData.cat_unidad_id}
+                                                />
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <div className="flex-1">
+                                                    <label className="text-[9px] font-semibold uppercase opacity-60 block mb-1">Piso</label>
+                                                    <QuickAddSelect
+                                                        options={catalogos.pisos}
+                                                        value={locationEditData.cat_piso_id}
+                                                        onChange={id => setLocationEditData(p => ({ ...p, cat_piso_id: id }))}
+                                                        onRegisterRequest={val => handleRegisterRequest('piso', val)}
+                                                        placeholder="Buscar o registrar Piso..."
+                                                        labelField="numero"
+                                                    />
+                                                </div>
+                                                <button onClick={handleSnapshotLocation} className="mt-5 bg-slate-900 border border-slate-700 text-white px-4 rounded-xl shadow-lg active:scale-95 transition-all">
+                                                    <CheckCircle size={18} />
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="flex items-center gap-4 pt-2 border-t border-current border-dotted opacity-60">
-                                        <div><p className="text-[8px] font-black uppercase">Unidad</p><p className="text-[10px] font-bold truncate uppercase">{selectedUser?.unidad || '---'}</p></div>
-                                        <div><p className="text-[8px] font-black uppercase">Oficina</p><p className="text-[10px] font-bold truncate uppercase">{selectedUser?.oficina || '---'}</p></div>
-                                        <div><p className="text-[8px] font-black uppercase">Piso</p><p className="text-[10px] font-bold truncate uppercase">{selectedUser?.piso || '---'}</p></div>
+                                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-2 border-t border-current border-dotted opacity-70">
+                                        <div><p className="text-[8px] font-semibold uppercase opacity-60">Edificio</p><p className="text-[10px] font-semibold truncate uppercase">{selectedUser?.edificio || '---'}</p></div>
+                                        <div><p className="text-[8px] font-semibold uppercase opacity-60">Unidad</p><p className="text-[10px] font-semibold truncate uppercase">{selectedUser?.unidad || '---'}</p></div>
+                                        <div><p className="text-[8px] font-semibold uppercase opacity-60">Oficina</p><p className="text-[10px] font-semibold truncate uppercase">{selectedUser?.oficina || '---'}</p></div>
+                                        <div><p className="text-[8px] font-semibold uppercase opacity-60">Piso</p><p className="text-[10px] font-semibold truncate uppercase">{selectedUser?.piso || '---'}</p></div>
                                     </div>
                                 )}
                             </div>
@@ -1006,7 +1208,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                                 <button
                                                     key={m.id}
                                                     onClick={() => setSearchMode(m.id)}
-                                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${searchMode === m.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wider transition-all ${searchMode === m.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                                                 >
                                                     {m.icon} {m.label}
                                                 </button>
@@ -1022,10 +1224,10 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                                 {suggestions.map(a => (
                                                     <button key={a.id} onClick={() => addActivo(a)} className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center justify-between transition-colors">
                                                         <div>
-                                                            <div className="flex items-center gap-2 font-black text-xs font-mono lowercase">
+                                                            <div className="flex items-center gap-2 font-semibold text-xs font-mono lowercase">
                                                                 <span className="uppercase">{a.codigo_activo}</span>
                                                                 {a.institucion && (
-                                                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${a.institucion === 'TIERRAS' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                                    <span className={`text-[8px] font-semibold px-1.5 py-0.5 rounded border uppercase shrink-0 ${a.institucion === 'TIERRAS' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                                                                         a.institucion === 'JUSTICIA' ? 'bg-amber-50 text-amber-600 border-amber-100' :
                                                                             'bg-blue-50 text-blue-600 border-blue-100'
                                                                         }`}>
@@ -1042,7 +1244,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                         )}
                                     </div>
                                     <div className="border border-slate-100 rounded-xl overflow-hidden">
-                                        <div className="sticky top-0 z-20 bg-slate-50 border-b border-slate-100 px-3 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest flex justify-between">
+                                        <div className="sticky top-0 z-20 bg-slate-50 border-b border-slate-100 px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex justify-between">
                                             <span>Activos Seleccionados</span>
                                             <span>{activosSeleccionados.length} Items</span>
                                         </div>
@@ -1050,10 +1252,10 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                             {activosSeleccionados.map(a => (
                                                 <div key={a.id} className="p-3 flex items-center justify-between gap-3">
                                                     <div className="min-w-0">
-                                                        <div className="flex items-center gap-2 font-mono font-bold text-xs lowercase">
+                                                        <div className="flex items-center gap-2 font-mono font-semibold text-xs lowercase">
                                                             <span className="uppercase">{a.codigo_activo}</span>
                                                             {a.institucion && (
-                                                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${a.institucion === 'TIERRAS' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                                <span className={`text-[8px] font-semibold px-1.5 py-0.5 rounded border uppercase shrink-0 ${a.institucion === 'TIERRAS' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                                                                     a.institucion === 'JUSTICIA' ? 'bg-amber-50 text-amber-600 border-amber-100' :
                                                                         'bg-blue-50 text-blue-600 border-blue-100'
                                                                     }`}>
@@ -1064,7 +1266,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                                         <div className="text-[10px] text-slate-400 leading-relaxed">{a.descripcion}</div>
                                                     </div>
                                                     <div className="flex items-center gap-2">
-                                                        {['Bueno', 'Regular', 'Malo'].map(e => <button key={e} onClick={() => setActivosSeleccionados(prev => prev.map(x => x.id === a.id ? { ...x, estado_fisico: e } : x))} className={`px-2 py-1 rounded text-[9px] font-bold ${a.estado_fisico === e ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-400'}`}>{e}</button>)}
+                                                        {['Bueno', 'Regular', 'Malo'].map(e => <button key={e} onClick={() => setActivosSeleccionados(prev => prev.map(x => x.id === a.id ? { ...x, estado_fisico: e } : x))} className={`px-2 py-1 rounded text-[9px] font-semibold ${a.estado_fisico === e ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-400'}`}>{e}</button>)}
                                                         <button onClick={() => setActivosSeleccionados(prev => prev.filter(x => x.id !== a.id))} className="text-slate-300 hover:text-red-500"><Trash2 size={16} /></button>
                                                     </div>
                                                 </div>
@@ -1086,6 +1288,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                     fetchUsuarios={fetchUsuarios}
                                     catalogos={catalogos}
                                     onRegisterRequest={handleRegisterRequest}
+                                    currentUser={currentUser}
                                 />
                             )}
                             <textarea placeholder="Observaciones..." className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm min-h-[80px]" value={observaciones} onChange={e => setObservaciones(e.target.value)} />
@@ -1095,30 +1298,30 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                     {step === 3 && (
                         <div className="p-8 text-center space-y-4">
                             <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20"><CheckCircle size={32} /></div>
-                            <div><h3 className="text-lg font-black text-slate-900">Acta Generada Correctamente</h3><p className="text-slate-400 text-xs mt-1">Descarga el documento para oficializar el proceso</p></div>
+                            <div><h3 className="text-lg font-semibold text-slate-900">Acta Generada Correctamente</h3><p className="text-slate-400 text-xs mt-1">Descarga el documento para oficializar el proceso</p></div>
                             <div className="space-y-2 max-w-sm mx-auto pt-4">
                                 {printedActas.map(a => (
                                     <button
                                         key={a.id}
                                         onClick={() => handlePrint(a.id, printMode === 'latest' ? newAssetIds : null)}
-                                        className="w-full flex items-center justify-between p-4 bg-slate-900 border border-slate-700 text-white rounded-2xl font-bold text-sm shadow-2xl active:scale-95 transition-all hover:bg-slate-800"
+                                        className="w-full flex items-center justify-between p-4 bg-slate-900 border border-slate-700 text-white rounded-2xl font-semibold text-sm shadow-2xl active:scale-95 transition-all hover:bg-slate-800"
                                     >
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-blue-400">
                                                 <FileText size={18} />
                                             </div>
                                             <div className="text-left">
-                                                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{selectedUser?.nombre_completo || 'Funcionario'}</p>
-                                                <p className="text-sm font-black">Acta de {a.tipo} #{String(a.id).padStart(6, '0')}</p>
+                                                <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-widest">{selectedUser?.nombre_completo || 'Funcionario'}</p>
+                                                <p className="text-sm font-semibold">Acta de {a.tipo} #{String(a.id).padStart(6, '0')}</p>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            {printMode === 'latest' && <span className="text-[8px] bg-blue-600 px-2 py-0.5 rounded-full text-white uppercase font-black italic shadow-lg shadow-blue-500/20">Solo Adición</span>}
+                                            {printMode === 'latest' && <span className="text-[8px] bg-blue-600 px-2 py-0.5 rounded-full text-white uppercase font-semibold italic shadow-lg shadow-blue-500/20">Solo Adición</span>}
                                             <ChevronRight size={16} className="text-slate-500" />
                                         </div>
                                     </button>
                                 ))}
-                                <button onClick={resetForm} className="w-full p-4 border border-slate-200 text-slate-400 rounded-xl font-bold text-sm hover:bg-slate-50">Nueva Operación</button>
+                                <button onClick={resetForm} className="w-full p-4 border border-slate-200 text-slate-400 rounded-xl font-semibold text-sm hover:bg-slate-50">Nueva Operación</button>
                             </div>
                         </div>
                     )}
@@ -1126,13 +1329,13 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
 
                 {step < 3 && (
                     <div className="flex justify-between items-center p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
-                        <button onClick={() => step === 1 ? resetForm() : setStep(s => s - 1)} className="text-slate-400 font-bold text-sm">Regresar</button>
-                        <button disabled={loading || (step === 1 && !selectedUser && !isNewUser) || (step === 2 && activosSeleccionados.length === 0)} onClick={step === 2 ? handleFinish : handleNextStep} className={`px-8 py-3 rounded-xl text-white font-black text-sm shadow-lg active:scale-95 disabled: opacity-50 ${accentClasses.bg} ${accentClasses.shadow}`}>{loading ? 'Procesando...' : step === 2 ? 'Finalizar' : 'Continuar'}</button>
+                        <button onClick={() => step === 1 ? resetForm() : setStep(s => s - 1)} className="text-slate-400 font-semibold text-sm">Regresar</button>
+                        <button disabled={loading || (step === 1 && !selectedUser && !isNewUser) || (step === 2 && activosSeleccionados.length === 0)} onClick={step === 2 ? handleFinish : handleNextStep} className={`px-8 py-3 rounded-xl text-white font-semibold text-sm shadow-lg active:scale-95 disabled: opacity-50 ${accentClasses.bg} ${accentClasses.shadow}`}>{loading ? 'Procesando...' : step === 2 ? 'Finalizar' : 'Continuar'}</button>
                     </div>
                 )}
 
-                <Modal isOpen={showConfirmModal} onClose={() => setShowConfirmModal(false)} title="Confirmar Devolución" size="md" footer={<><button onClick={() => setShowConfirmModal(false)} className="px-4 py-2 text-slate-400 font-bold">Cancelar</button><button onClick={confirmarDevolucion} className="px-6 py-2 bg-orange-600 text-white rounded-xl font-black">Confirmar</button></>}>
-                    <div className="p-4 bg-orange-50 rounded-xl border border-orange-100"><p className="text-orange-800 text-sm font-bold">Se liberarán {activosSeleccionados.length} activos del funcionario.</p></div>
+                <Modal isOpen={showConfirmModal} onClose={() => setShowConfirmModal(false)} title="Confirmar Devolución" size="md" footer={<><button onClick={() => setShowConfirmModal(false)} className="px-4 py-2 text-slate-400 font-semibold">Cancelar</button><button onClick={confirmarDevolucion} className="px-6 py-2 bg-orange-600 text-white rounded-xl font-semibold">Confirmar</button></>}>
+                    <div className="p-4 bg-orange-50 rounded-xl border border-orange-100"><p className="text-orange-800 text-sm font-semibold">Se liberarán {activosSeleccionados.length} activos del funcionario.</p></div>
                 </Modal>
 
                 <Modal isOpen={showAppendModal} onClose={() => setShowAppendModal(false)} title="¿Cómo desea proceder?" size="md">
@@ -1140,9 +1343,9 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                         <div className="flex items-center gap-4 p-4 bg-blue-50 border border-blue-100 rounded-2xl">
                             <div className="w-12 h-12 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20"><FileText size={24} /></div>
                             <div>
-                                <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Acta Reciente Encontrada</p>
-                                <p className="text-xl font-black text-slate-900">Acta # {String(ultimoActa?.id).padStart(6, '0')}</p>
-                                <p className="text-[10px] font-bold text-slate-500 uppercase italic">Emitida el: {new Date(ultimoActa?.fecha_emision).toLocaleDateString()}</p>
+                                <p className="text-[10px] font-semibold text-blue-600 uppercase tracking-widest">Acta Reciente Encontrada</p>
+                                <p className="text-xl font-semibold text-slate-900">Acta # {String(ultimoActa?.id).padStart(6, '0')}</p>
+                                <p className="text-[10px] font-semibold text-slate-500 uppercase italic">Emitida el: {new Date(ultimoActa?.fecha_emision).toLocaleDateString()}</p>
                             </div>
                         </div>
 
@@ -1150,7 +1353,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                             <div className="grid grid-cols-1 gap-4">
                                 {/* OPCION AUMENTAR */}
                                 <div className="relative group">
-                                    <div className="absolute -top-2.5 right-4 z-10 bg-blue-600 text-white text-[9px] font-black px-3 py-1 rounded-full shadow-lg shadow-blue-500/30 tracking-widest animate-pulse">RECOMENDADO</div>
+                                    <div className="absolute -top-2.5 right-4 z-10 bg-blue-600 text-white text-[9px] font-semibold px-3 py-1 rounded-full shadow-lg shadow-blue-500/30 tracking-widest animate-pulse">RECOMENDADO</div>
                                     <button
                                         onClick={() => handleConfirmAppend(true)}
                                         className="w-full p-5 bg-white border-2 border-blue-100 rounded-3xl text-left transition-all hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-500/10 active:scale-[0.98] ring-offset-2 hover:ring-2 ring-blue-500/20"
@@ -1160,22 +1363,22 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                                 <PlusCircle size={24} />
                                             </div>
                                             <div className="flex-1">
-                                                <p className="text-lg font-black text-slate-900 leading-tight">Aumentar Acta Existente</p>
-                                                <p className="text-xs text-slate-400 font-bold mt-1">Agregue estos {activosSeleccionados.length} activos al documento actual sin generar nuevos números.</p>
+                                                <p className="text-lg font-semibold text-slate-900 leading-tight">Aumentar Acta Existente</p>
+                                                <p className="text-xs text-slate-400 font-semibold mt-1">Agregue estos {activosSeleccionados.length} activos al documento actual sin generar nuevos números.</p>
 
                                                 <div className="mt-5 pt-4 border-t border-slate-50 flex flex-wrap items-center justify-between gap-3">
                                                     <div className="flex items-center gap-2">
                                                         <Printer size={14} className="text-blue-500" />
-                                                        <span className="text-[10px] font-black uppercase text-slate-500">¿Qué desea imprimir luego?</span>
+                                                        <span className="text-[10px] font-semibold uppercase text-slate-500">¿Qué desea imprimir luego?</span>
                                                     </div>
                                                     <div className="flex bg-slate-100 p-1 rounded-xl" onClick={e => e.stopPropagation()}>
                                                         <button
                                                             onClick={() => setPrintMode('all')}
-                                                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${printMode === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                                            className={`px-4 py-2 rounded-lg text-[10px] font-semibold uppercase transition-all ${printMode === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                                                         >Todo el Acta</button>
                                                         <button
                                                             onClick={() => setPrintMode('latest')}
-                                                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${printMode === 'latest' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                                            className={`px-4 py-2 rounded-lg text-[10px] font-semibold uppercase transition-all ${printMode === 'latest' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                                                         >Solo Adición</button>
                                                     </div>
                                                 </div>
@@ -1194,15 +1397,15 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                             <FilePlus size={24} />
                                         </div>
                                         <div>
-                                            <p className="text-lg font-black text-slate-600 group-hover:text-slate-900 leading-tight">Generar Nueva Acta</p>
-                                            <p className="text-xs text-slate-400 font-bold mt-1">Crea un registro independiente con un nuevo folio correlativo.</p>
+                                            <p className="text-lg font-semibold text-slate-600 group-hover:text-slate-900 leading-tight">Generar Nueva Acta</p>
+                                            <p className="text-xs text-slate-400 font-semibold mt-1">Crea un registro independiente con un nuevo folio correlativo.</p>
                                         </div>
                                     </div>
                                 </button>
                             </div>
                         </div>
 
-                        <button onClick={() => setShowAppendModal(false)} className="w-full py-2 text-slate-400 text-xs font-black uppercase tracking-widest hover:text-slate-600 transition-colors">Cancelar y revisar selección</button>
+                        <button onClick={() => setShowAppendModal(false)} className="w-full py-2 text-slate-400 text-xs font-semibold uppercase tracking-widest hover:text-slate-600 transition-colors">Cancelar y revisar selección</button>
                     </div>
                 </Modal>
 
@@ -1210,15 +1413,15 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                     <form onSubmit={handleCreateAsset} className="p-4 space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="col-span-2">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Código Activo *</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">Código Activo *</label>
                                 <input required className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={newAssetData.codigo_activo} onChange={e => setNewAssetData(p => ({ ...p, codigo_activo: e.target.value }))} />
                             </div>
                             <div className="col-span-2">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Descripción *</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">Descripción *</label>
                                 <textarea required className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={newAssetData.descripcion} onChange={e => setNewAssetData(p => ({ ...p, descripcion: e.target.value }))} />
                             </div>
                             <div className="col-span-2">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Estado</label>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">Estado</label>
                                 <select className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={newAssetData.estado_actual} onChange={e => setNewAssetData(p => ({ ...p, estado_actual: e.target.value }))}>
                                     <option value="Disponible">Disponible</option>
                                     <option value="Asignado">Asignado</option>
@@ -1226,14 +1429,14 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                 </select>
                             </div>
                             <div className="col-span-2 space-y-3 pt-2 border-t border-slate-50">
-                                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest block bg-slate-50 p-1.5 rounded-lg border border-slate-100 flex items-center gap-2">
+                                <label className="text-[10px] font-semibold text-slate-900 uppercase tracking-widest block bg-slate-50 p-1.5 rounded-lg border border-slate-100 flex items-center gap-2">
                                     <Archive size={14} className="text-indigo-600" /> Clasificación Contable
                                 </label>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Grupo Contable</label>
+                                        <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">Grupo Contable</label>
                                         <select
-                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500/20"
                                             value={newAssetData.cat_grupo_contable_id || ''}
                                             onChange={e => setNewAssetData(p => ({ ...p, cat_grupo_contable_id: e.target.value }))}
                                         >
@@ -1242,9 +1445,9 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Auxiliar</label>
+                                        <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">Auxiliar</label>
                                         <select
-                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500/20"
                                             value={newAssetData.cat_auxiliar_id || ''}
                                             onChange={e => setNewAssetData(p => ({ ...p, cat_auxiliar_id: e.target.value }))}
                                         >
@@ -1255,60 +1458,10 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                 </div>
                             </div>
 
-                            <div className="col-span-2 space-y-3 pt-2 border-t border-slate-50">
-                                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest block bg-slate-50 p-1.5 rounded-lg border border-slate-100 flex items-center gap-2">
-                                    <MapPin size={14} className="text-blue-600" /> Ubicación del Catálogo
-                                </label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div className="col-span-2">
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block font-black text-blue-600">Ubicación Física (Edificio)</label>
-                                        <QuickAddSelect
-                                            options={catalogos.ubicaciones}
-                                            value={newAssetData.ubicacion_fisica_id}
-                                            onChange={id => setNewAssetData(p => ({ ...p, ubicacion_fisica_id: id, cat_unidad_id: '', cat_oficina_id: '' }))}
-                                            onRegisterRequest={val => handleRegisterRequest('ubicacion', val)}
-                                            placeholder="Buscar o registrar Edificio..."
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Unidad</label>
-                                        <QuickAddSelect
-                                            options={catalogos.unidades.filter(u => !newAssetData.ubicacion_fisica_id || u.ubicacion_fisica_id === Number(newAssetData.ubicacion_fisica_id))}
-                                            value={newAssetData.cat_unidad_id}
-                                            onChange={id => setNewAssetData(p => ({ ...p, cat_unidad_id: id, cat_oficina_id: '' }))}
-                                            onRegisterRequest={val => handleRegisterRequest('unidad', val)}
-                                            placeholder="Buscar o registrar Unidad..."
-                                            disabled={!newAssetData.ubicacion_fisica_id}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Oficina</label>
-                                        <QuickAddSelect
-                                            options={catalogos.oficinas.filter(o => !newAssetData.cat_unidad_id || o.unidad_id === Number(newAssetData.cat_unidad_id))}
-                                            value={newAssetData.cat_oficina_id}
-                                            onChange={id => setNewAssetData(p => ({ ...p, cat_oficina_id: id }))}
-                                            onRegisterRequest={val => handleRegisterRequest('oficina', val)}
-                                            placeholder="Buscar o registrar Oficina..."
-                                            disabled={!newAssetData.cat_unidad_id}
-                                        />
-                                    </div>
-                                    <div className="col-span-2">
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Piso</label>
-                                        <QuickAddSelect
-                                            options={catalogos.pisos}
-                                            value={newAssetData.cat_piso_id}
-                                            onChange={id => setNewAssetData(p => ({ ...p, cat_piso_id: id }))}
-                                            onRegisterRequest={val => handleRegisterRequest('piso', val)}
-                                            labelField="numero"
-                                            placeholder="Buscar o registrar Piso..."
-                                        />
-                                    </div>
-                                </div>
-                            </div>
                         </div>
                         <div className="flex justify-end gap-3 pt-2">
-                            <button type="button" onClick={() => setShowNewAssetModal(false)} className="px-4 py-2 text-slate-400 font-bold">Cancelar</button>
-                            <button type="submit" disabled={assetSaving} className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-black shadow-lg shadow-emerald-500/20 disabled:opacity-50">
+                            <button type="button" onClick={() => setShowNewAssetModal(false)} className="px-4 py-2 text-slate-400 font-semibold">Cancelar</button>
+                            <button type="submit" disabled={assetSaving} className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-semibold shadow-lg shadow-emerald-500/20 disabled:opacity-50">
                                 {assetSaving ? 'Guardando...' : 'Crear Activo'}
                             </button>
                         </div>

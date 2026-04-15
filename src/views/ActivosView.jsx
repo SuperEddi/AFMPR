@@ -13,6 +13,12 @@ const getStatusStyle = (estado) => ({
     'Sobrante': 'bg-violet-50 text-violet-700 border-violet-100',
 }[estado] || 'bg-slate-100 text-slate-600 border-slate-200');
 
+const getOrigenStyle = (origen) => ({
+    'Compra': 'bg-sky-50 text-sky-700 border-sky-200',
+    'Sobrante': 'bg-violet-50 text-violet-700 border-violet-200',
+    'Donación': 'bg-rose-50 text-rose-700 border-rose-200',
+}[origen] || 'bg-slate-50 text-slate-500 border-slate-200');
+
 const getInstitutionStyle = (inst) => {
     const i = (inst || '').toUpperCase();
     if (i === 'TIERRAS') return 'bg-emerald-50 text-emerald-600 border-emerald-100';
@@ -54,7 +60,7 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
             <div className={`bg-white rounded-2xl shadow-2xl w-full ${maxWidths[size]} animate-in zoom-in-95 duration-200 overflow-hidden`}>
                 <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
-                    <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wider">{title}</h3>
+                    <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wider">{title}</h3>
                     <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors">
                         <X size={18} />
                     </button>
@@ -67,7 +73,7 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
     );
 };
 
-const ActivosView = ({ authFetch = fetch, currentUser }) => {
+const ActivosView = ({ authFetch = fetch, currentUser, institution }) => {
     const [activos, setActivos] = useState([]);
     const [showCatalogModal, setShowCatalogModal] = useState(false);
     const [catalogTab, setCatalogTab] = useState('auxiliares');
@@ -81,7 +87,7 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
     const [editingActivo, setEditingActivo] = useState(null);
     const [saving, setSaving] = useState(false);
     const [formData, setFormData] = useState({
-        codigo_activo: '', descripcion: '', estado_actual: 'Disponible',
+        codigo_activo: '', descripcion: '', estado_actual: 'Disponible', origen: 'Compra',
         ubicacion_fisica_id: '', cat_unidad_id: '', cat_oficina_id: '', cat_piso_id: '',
         cat_auxiliar_id: '', cat_grupo_contable_id: ''
     });
@@ -108,10 +114,13 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
         setLoading(false);
     }, [authFetch]);
 
+    // Carga inicial y cuando cambia la institución o los callbacks de fecth
     useEffect(() => {
+        setActivos([]);
+        setFilter('');
         fetchCatalogos();
         fetchActivos();
-    }, [fetchActivos, fetchCatalogos]);
+    }, [fetchActivos, fetchCatalogos, institution]);
 
     useEffect(() => {
         const handler = () => {
@@ -123,9 +132,9 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
     }, [fetchActivos, fetchCatalogos]);
 
     const handleRegisterRequest = (tipo, nombre) => {
-        let context = {};
-        if (tipo === 'unidad') context = { ubicacion_fisica_id: formData.ubicacion_fisica_id };
-        if (tipo === 'oficina') context = { unidad_id: formData.cat_unidad_id };
+        let context = { target: 'asset_manual' };
+        if (tipo === 'unidad') context = { ...context, ubicacion_fisica_id: formData.ubicacion_fisica_id };
+        if (tipo === 'oficina') context = { ...context, unidad_id: formData.cat_unidad_id };
         setQuickReg({ isOpen: true, type: tipo, name: nombre, context });
     };
 
@@ -136,9 +145,12 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
             if (tipo === 'unidad') url = '/api/catalogos/unidades';
             if (tipo === 'oficina') url = '/api/catalogos/oficinas';
             if (tipo === 'piso') url = '/api/catalogos/pisos';
+            if (tipo === 'auxiliar') url = '/api/catalogos/auxiliares';
+            if (tipo === 'grupo') url = '/api/catalogos/grupos';
 
             const res = await authFetch(url, {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ...data, registrado_por: currentUser?.nombre })
             });
 
@@ -150,7 +162,9 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
                     'ubicacion': 'ubicacion_fisica_id',
                     'unidad': 'cat_unidad_id',
                     'oficina': 'cat_oficina_id',
-                    'piso': 'cat_piso_id'
+                    'piso': 'cat_piso_id',
+                    'auxiliar': 'cat_auxiliar_id',
+                    'grupo': 'cat_grupo_contable_id'
                 };
                 setFormData(prev => ({ ...prev, [fieldMap[tipo]]: newItem.id }));
             } else {
@@ -170,8 +184,8 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
             setFormData({
                 codigo_activo: activo.codigo_activo || '',
                 descripcion: activo.descripcion || '',
-                descripcion: activo.descripcion || '',
                 estado_actual: activo.estado_actual || 'Disponible',
+                origen: activo.origen || 'Compra',
                 ubicacion_fisica_id: activo.ubicacion_fisica_id || '',
                 cat_unidad_id: activo.cat_unidad_id || '',
                 cat_oficina_id: activo.cat_oficina_id || '',
@@ -181,7 +195,7 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
             });
         } else {
             setFormData({
-                codigo_activo: '', descripcion: '', estado_actual: 'Disponible',
+                codigo_activo: '', descripcion: '', estado_actual: 'Disponible', origen: 'Compra',
                 ubicacion_fisica_id: '', cat_unidad_id: '', cat_oficina_id: '', cat_piso_id: '',
                 cat_auxiliar_id: '', cat_grupo_contable_id: ''
             });
@@ -192,20 +206,29 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        const password = prompt("Ingrese la contraseña de administrador para confirmar:");
-        if (!password) return;
+        // Ya no pedimos contraseña en el frontend para registros o ediciones
+        // El backend solo la requerirá para eliminaciones (DELETE)
+        let password = null;
 
         setSaving(true);
         try {
             const url = editingActivo ? `/api/activos/${editingActivo.id}` : '/api/activos';
             const method = editingActivo ? 'PUT' : 'POST';
+
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(editingActivo?.institucion &&
+                    editingActivo.institucion !== 'undefined' &&
+                    editingActivo.institucion !== 'null'
+                    ? { 'x-target-institution': editingActivo.institucion.toLowerCase() }
+                    : {})
+            };
+            // Si proporcionamos una contraseña manual, la enviamos (sobrescribe la de authFetch si existiera)
+            if (password) headers['x-admin-password'] = password;
+
             const res = await authFetch(url, {
                 method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-admin-password': password,
-                    'x-target-institution': editingActivo?.institucion
-                },
+                headers,
                 body: JSON.stringify({ ...formData, registrado_por: editingActivo ? editingActivo.registrado_por : currentUser?.nombre })
             });
             if (res.ok) {
@@ -224,11 +247,12 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
 
     const exportToExcelFile = async () => {
         if (!filtered.length) return;
+
         const data = filtered.map(a => ({
             'ID DB': a.id || '',
             'Código Activo': a.codigo_activo || '',
             'Descripción': a.descripcion || '',
-            'Descripción': a.descripcion || '-',
+            'Origen': a.origen || 'Compra',
             'Estado': a.estado_actual || 'Disponible',
             'Responsable': a.usuario_nombre || 'No asignado',
             'Edificio': a.edificio || '-',
@@ -242,7 +266,22 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
             'Institución': a.institucion || '-',
             'Registrado Por': a.registrado_por || '-'
         }));
-        exportToExcel(data, `Inventario_Activos_${new Date().toISOString().split('T')[0]}`);
+
+        const columns = [
+            'ID DB', 'Código Activo', 'Descripción', 'Origen', 'Estado', 'Responsable',
+            'Edificio', 'Unidad', 'Oficina', 'Piso', 'Auxiliar',
+            'Grupo Contable', 'Vida Útil (Años)', 'Obs. Grupo', 'Institución', 'Registrado Por'
+        ];
+
+        const rows = data.map(item => Object.values(item));
+
+        await exportToExcel({
+            filename: `Inventario_Activos_${new Date().toISOString().split('T')[0]}`,
+            title: 'Reporte de Inventario de Activos',
+            subtitle: `Generado el: ${new Date().toLocaleString()} - Total: ${data.length} registros`,
+            columns,
+            rows
+        });
     };
 
     const importFromCSV = (e) => {
@@ -313,7 +352,7 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
                             <Archive size={18} />
                         </div>
                         <div>
-                            <h2 className="text-base font-black text-slate-900 leading-tight">Inventario de Activos</h2>
+                            <h2 className="text-base font-semibold text-slate-900 leading-tight">Inventario de Activos</h2>
                             <p className="text-slate-400 text-xs font-medium">
                                 {loading ? '...' : `${activos.length.toLocaleString()} equipos`}
                             </p>
@@ -347,7 +386,7 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
                             <Settings2 size={16} />
                         </button>
                         <button onClick={() => openModal()}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 font-bold text-sm transition-all active:scale-95 shadow-md shadow-indigo-500/20">
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 font-semibold text-sm transition-all active:scale-95 shadow-md shadow-indigo-500/20">
                             <Plus size={16} /> <span className="hidden sm:inline">Nuevo</span>
                         </button>
                     </div>
@@ -364,30 +403,30 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
                         <div className="flex border-b border-slate-100 px-4 mt-1">
                             <button
                                 onClick={() => { setCatalogTab('ubicaciones'); setEditingCatalog(null); setCatForm({ nombre: '', direccion: '', observaciones: '' }); }}
-                                className={`px-6 py-4 text-xs font-black uppercase tracking-widest transition-all border-b-2 ${catalogTab === 'ubicaciones' ? 'border-primary-600 border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                                className={`px-6 py-4 text-xs font-semibold uppercase tracking-widest transition-all border-b-2 ${catalogTab === 'ubicaciones' ? 'border-primary-600 border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
                             >Ubicaciones</button>
                             <button
                                 onClick={() => { setCatalogTab('auxiliares'); setEditingCatalog(null); }}
-                                className={`px-6 py-4 text-xs font-black uppercase tracking-widest transition-all border-b-2 ${catalogTab === 'auxiliares' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                                className={`px-6 py-4 text-xs font-semibold uppercase tracking-widest transition-all border-b-2 ${catalogTab === 'auxiliares' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
                             >Auxiliares</button>
                             <button
                                 onClick={() => { setCatalogTab('grupos'); setEditingCatalog(null); }}
-                                className={`px-6 py-4 text-xs font-black uppercase tracking-widest transition-all border-b-2 ${catalogTab === 'grupos' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                                className={`px-6 py-4 text-xs font-semibold uppercase tracking-widest transition-all border-b-2 ${catalogTab === 'grupos' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
                             >Grupos Contables</button>
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
                             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-4">
-                                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                                <h4 className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 flex items-center gap-2">
                                     <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
                                     {editingCatalog ? `Editar ${catalogTab === 'ubicaciones' ? 'Ubicación' : (catalogTab === 'auxiliares' ? 'Auxiliar' : 'Grupo')}` : `Nuevo ${catalogTab === 'ubicaciones' ? 'Ubicación' : (catalogTab === 'auxiliares' ? 'Auxiliar' : 'Grupo')}`}
                                 </h4>
 
                                 <div className="grid grid-cols-1 gap-4">
                                     <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Nombre</label>
+                                        <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">Nombre</label>
                                         <input
-                                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
                                             value={catForm.nombre}
                                             onChange={e => setCatForm(p => ({ ...p, nombre: e.target.value }))}
                                             placeholder="Ej: Muebles y Enseres"
@@ -396,9 +435,9 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
 
                                     {catalogTab === 'ubicaciones' && (
                                         <div>
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Dirección</label>
+                                            <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">Dirección</label>
                                             <input
-                                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
                                                 value={catForm.direccion || ''}
                                                 onChange={e => setCatForm(p => ({ ...p, direccion: e.target.value }))}
                                                 placeholder="Ej: Plaza Murillo #123"
@@ -410,19 +449,19 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
                                         <div className={catalogTab === 'grupos' ? "grid grid-cols-3 gap-3" : "grid grid-cols-1"}>
                                             {catalogTab === 'grupos' && (
                                                 <div className="col-span-1">
-                                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Vida Útil (Años)</label>
+                                                    <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">Vida Útil (Años)</label>
                                                     <input
                                                         type="number"
-                                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500/20 outline-none"
                                                         value={catForm.vida_util}
                                                         onChange={e => setCatForm(p => ({ ...p, vida_util: e.target.value }))}
                                                     />
                                                 </div>
                                             )}
                                             <div className={catalogTab === 'grupos' ? "col-span-2" : "col-span-1"}>
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Observaciones</label>
+                                                <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">Observaciones</label>
                                                 <input
-                                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500/20 outline-none"
                                                     value={catForm.observaciones}
                                                     onChange={e => setCatForm(p => ({ ...p, observaciones: e.target.value }))}
                                                     placeholder="Notas adicionales..."
@@ -436,7 +475,7 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
                                     {editingCatalog && (
                                         <button
                                             onClick={() => { setEditingCatalog(null); setCatForm({ nombre: '', vida_util: '', observaciones: '' }); }}
-                                            className="px-4 py-2 text-[10px] font-black uppercase text-slate-400 hover:text-slate-600"
+                                            className="px-4 py-2 text-[10px] font-semibold uppercase text-slate-400 hover:text-slate-600"
                                         >Cancelar</button>
                                     )}
                                     <button
@@ -462,7 +501,7 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
                                                 setCatSaving(false);
                                             }
                                         }}
-                                        className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg shadow-indigo-200 disabled:opacity-50 active:scale-95 transition-all"
+                                        className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-semibold uppercase shadow-lg shadow-indigo-200 disabled:opacity-50 active:scale-95 transition-all"
                                     >
                                         {catSaving ? 'Guardando...' : (editingCatalog ? 'Actualizar' : 'Registrar')}
                                     </button>
@@ -470,19 +509,19 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
                             </div>
 
                             <div className="space-y-2">
-                                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1">Registros Actuales</h4>
+                                <h4 className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 px-1">Registros Actuales</h4>
                                 <div className="space-y-1.5">
                                     {(catalogTab === 'ubicaciones' ? (catalogos.ubicaciones || []) : (catalogTab === 'auxiliares' ? catalogos.auxiliares : catalogos.grupos)).map(item => (
                                         <div key={item.id} className="group flex items-center justify-between p-3 bg-white border border-slate-100 rounded-2xl hover:border-indigo-200 hover:shadow-sm transition-all">
                                             <div>
-                                                <p className="text-xs font-bold text-slate-700">{item.nombre}</p>
+                                                <p className="text-xs font-semibold text-slate-700">{item.nombre}</p>
                                                 {catalogTab === 'ubicaciones' && item.direccion && (
-                                                    <p className="text-[9px] text-slate-400 font-bold opacity-70">
+                                                    <p className="text-[9px] text-slate-400 font-semibold opacity-70">
                                                         📍 {item.direccion} {item.observaciones ? `· ${item.observaciones}` : ''}
                                                     </p>
                                                 )}
                                                 {catalogTab === 'grupos' && item.vida_util && (
-                                                    <p className="text-[9px] text-slate-400 font-bold opacity-70">
+                                                    <p className="text-[9px] text-slate-400 font-semibold opacity-70">
                                                         ⏱️ {item.vida_util} años de vida útil {item.observaciones ? `· ${item.observaciones}` : ''}
                                                     </p>
                                                 )}
@@ -517,7 +556,7 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
                                         </div>
                                     ))}
                                     {(catalogTab === 'ubicaciones' ? (catalogos.ubicaciones || []) : (catalogTab === 'auxiliares' ? catalogos.auxiliares : catalogos.grupos)).length === 0 && (
-                                        <div className="py-8 text-center text-slate-300 text-[10px] font-bold uppercase tracking-widest">No hay registros</div>
+                                        <div className="py-8 text-center text-slate-300 text-[10px] font-semibold uppercase tracking-widest">No hay registros</div>
                                     )}
                                 </div>
                             </div>
@@ -535,13 +574,12 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
                             <div className="hidden md:block overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar">
                                 <table className="w-full text-left border-collapse min-w-[800px]">
                                     <thead className="sticky top-0 z-20">
-                                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500 font-bold">
+                                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
                                             <th className="w-12 px-2 py-3 bg-slate-50 rounded-tl-xl text-center">ID</th>
                                             <th className="px-4 py-3 bg-slate-50 italic">Código / Descripción</th>
-                                            <th className="px-4 py-3 bg-slate-50">Descripción</th>
-                                            <th className="px-4 py-3 bg-slate-50">Estado</th>
+                                            <th className="px-4 py-3 bg-slate-50">Estado / Origen</th>
                                             <th className="px-4 py-3 bg-slate-50">Ubicación Actual</th>
-                                            <th className="px-4 py-3 bg-slate-50">Responsable / Origen</th>
+                                            <th className="px-4 py-3 bg-slate-50">Responsable</th>
                                             <th className="px-4 py-3 bg-slate-50 text-right rounded-tr-xl">–</th>
                                         </tr>
                                     </thead>
@@ -556,9 +594,9 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
                                                         </div>
                                                         <div>
                                                             <div className="flex items-center gap-2">
-                                                                <div className="font-bold text-slate-800 text-xs font-mono uppercase tracking-tight">{a.codigo_activo}</div>
+                                                                <div className="font-semibold text-slate-800 text-xs font-mono uppercase tracking-tight">{a.codigo_activo}</div>
                                                                 {a.institucion && (
-                                                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-wider ${getInstitutionStyle(a.institucion)}`}>
+                                                                    <span className={`text-[8px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-wider ${getInstitutionStyle(a.institucion)}`}>
                                                                         {a.institucion}
                                                                     </span>
                                                                 )}
@@ -568,19 +606,24 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-2">
-                                                </td>
-                                                <td className="px-4 py-2">
-                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusStyle(a.estado_actual)}`}>
-                                                        {a.estado_actual}
-                                                    </span>
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border self-start ${getStatusStyle(a.estado_actual)}`}>
+                                                            {a.estado_actual}
+                                                        </span>
+                                                        {a.origen && (
+                                                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-semibold border self-start ${getOrigenStyle(a.origen)}`}>
+                                                                {a.origen}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-4 py-2 text-[10px] text-slate-500 font-semibold italic">
-                                                    {a.edificio ? <span className="text-slate-700 font-bold block mb-0.5 uppercase tracking-tighter not-italic">{a.edificio}</span> : ''}
+                                                    {a.edificio ? <span className="text-slate-700 font-semibold block mb-0.5 uppercase tracking-tighter not-italic">{a.edificio}</span> : ''}
                                                     {a.oficina ? `${a.oficina} (P${a.piso})` : '—'}
                                                     <div className="text-[9px] text-slate-400 mt-0.5 not-italic flex flex-col gap-0.5">
-                                                        {a.auxiliar && <span className="text-indigo-500 font-bold bg-indigo-50 px-1 py-0.5 rounded-md self-start border border-indigo-100/50">Aux: {a.auxiliar}</span>}
+                                                        {a.auxiliar && <span className="text-indigo-500 font-semibold bg-indigo-50 px-1 py-0.5 rounded-md self-start border border-indigo-100/50">Aux: {a.auxiliar}</span>}
                                                         {a.grupo_contable && (
-                                                            <span title={a.grupo_observaciones} className="text-emerald-600 font-bold bg-emerald-50 px-1 py-0.5 rounded-md self-start border border-emerald-100/50">
+                                                            <span title={a.grupo_observaciones} className="text-emerald-600 font-semibold bg-emerald-50 px-1 py-0.5 rounded-md self-start border border-emerald-100/50">
                                                                 Grp: {a.grupo_contable} {a.grupo_vida_util ? `(${a.grupo_vida_util}a)` : ''}
                                                             </span>
                                                         )}
@@ -588,12 +631,12 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
                                                 </td>
                                                 <td className="px-4 py-2">
                                                     {a.usuario_nombre ? (
-                                                        <div className="text-[10px] text-indigo-600 font-bold flex items-center gap-1">
+                                                        <div className="text-[10px] text-indigo-600 font-semibold flex items-center gap-1">
                                                             <UserCheck size={10} /> {a.usuario_nombre}
                                                         </div>
                                                     ) : <span className="text-slate-300 text-xs">—</span>}
                                                     {a.registrado_por && (
-                                                        <div className="text-[8px] font-bold text-violet-400 uppercase mt-0.5">
+                                                        <div className="text-[8px] font-semibold text-violet-400 uppercase mt-0.5">
                                                             Reg: {a.registrado_por}
                                                         </div>
                                                     )}
@@ -619,49 +662,81 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
                                 </table>
                             </div>
 
+                            {/* Mobile Card View (Refined) */}
                             <div className="md:hidden divide-y divide-slate-100">
                                 {filtered.length === 0 ? (
-                                    <div className="py-12 text-center text-slate-400 text-sm italic">Sin resultados</div>
-                                ) : filtered.slice(0, 100).map(a => (
-                                    <div key={a.id} className="p-4 flex items-start gap-4 hover:bg-slate-50 transition-colors">
-                                        <div className="p-2.5 bg-slate-100 text-slate-400 rounded-xl flex-shrink-0 mt-0.5">
-                                            {getIcon(a.descripcion)}
-                                        </div>
-                                        <div className="flex-1 min-w-0 space-y-1">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-black text-slate-900 text-xs font-mono uppercase tracking-tight">{a.codigo_activo}</span>
-                                                    {a.institucion && (
-                                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-wider ${getInstitutionStyle(a.institucion)}`}>
-                                                            {a.institucion}
-                                                        </span>
-                                                    )}
+                                    <div className="py-12 text-center text-slate-400 italic text-xs font-semibold uppercase tracking-widest">Sin resultados</div>
+                                ) : filtered.slice(0, 150).map(a => (
+                                    <div key={`${a.institucion}-${a.id}`} className={`p-4 flex flex-col gap-3 transition-all active:bg-slate-50 ${a.activo === 0 ? 'opacity-60 grayscale' : ''} ${getRowStyle(a.institucion)} border-l-0`}>
+                                        {/* Header de Tarjeta */}
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-slate-100 text-slate-400 rounded-xl flex-shrink-0">
+                                                    {getIcon(a.descripcion)}
                                                 </div>
-                                                <div className="flex gap-2 items-center">
-                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black border uppercase ${getStatusStyle(a.estado_actual)}`}>
-                                                        {a.estado_actual}
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-semibold text-slate-900 text-xs font-mono uppercase tracking-tight">{a.codigo_activo}</span>
+                                                        {a.institucion && (
+                                                            <span className={`text-[8px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-wider ${getInstitutionStyle(a.institucion)}`}>
+                                                                {a.institucion}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-500 font-medium leading-tight truncate">{a.descripcion}</div>
+                                                </div>
+                                            </div>
+                                            <button onClick={() => openModal(a)} className="p-2 text-slate-300 hover:text-indigo-600 active:bg-indigo-50 rounded-xl transition-all">
+                                                <Edit2 size={16} />
+                                            </button>
+                                        </div>
+
+                                        {/* Detalles Técnicos */}
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-1">
+                                            <div className="space-y-0.5">
+                                                <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-widest block">Ubicación</span>
+                                                <div className="text-[10px] text-slate-700 font-semibold truncate">
+                                                    📍 {a.oficina || 'Sin asignar'}
+                                                    <span className="text-slate-400 font-medium ml-1">(P{a.piso || '?'})</span>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-0.5">
+                                                <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-widest block">Estado</span>
+                                                <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-semibold border uppercase tracking-wider ${getStatusStyle(a.estado_actual)}`}>
+                                                    {a.estado_actual}
+                                                </span>
+                                                {a.origen && (
+                                                    <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-semibold border uppercase tracking-wider mt-0.5 ${getOrigenStyle(a.origen)}`}>
+                                                        {a.origen}
                                                     </span>
-                                                    <button onClick={() => openModal(a)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-                                                        <Edit2 size={14} />
-                                                    </button>
+                                                )}
+                                            </div>
+                                            <div className="col-span-2 space-y-0.5 border-t border-slate-50 pt-1">
+                                                <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-widest block">Responsable</span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <div className="w-4 h-4 bg-indigo-100 text-indigo-600 rounded-md flex items-center justify-center text-[8px] font-semibold">
+                                                        {a.usuario_nombre?.charAt(0) || '?'}
+                                                    </div>
+                                                    <span className="text-[10px] text-indigo-600 font-semibold">{a.usuario_nombre || 'No asignado'}</span>
                                                 </div>
                                             </div>
-                                            <div className="text-[11px] text-slate-500 font-medium leading-relaxed">{a.descripcion}</div>
-                                            <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1">
-                                                {a.usuario_nombre ? (
-                                                    <div className="text-[10px] text-indigo-600 font-bold flex items-center gap-1">
-                                                        <UserCheck size={10} /> {a.usuario_nombre}
-                                                    </div>
-                                                ) : (
-                                                    <div className="text-[10px] text-slate-300 font-bold italic">Sin asignar</div>
+                                        </div>
+
+                                        {/* Metadata (Auxiliar / Grupo) */}
+                                        {(a.auxiliar || a.grupo_contable) && (
+                                            <div className="flex flex-wrap gap-1.5 mt-1">
+                                                {a.auxiliar && (
+                                                    <span className="text-[8px] font-semibold text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100/50">
+                                                        AUX: {a.auxiliar}
+                                                    </span>
                                                 )}
-                                                {a.oficina && (
-                                                    <div className="text-[10px] text-slate-400 font-bold bg-slate-50 px-1.5 rounded border border-slate-100">
-                                                        📍 {a.oficina} (P{a.piso})
-                                                    </div>
+                                                {a.grupo_contable && (
+                                                    <span className="text-[8px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100/50">
+                                                        GRP: {a.grupo_contable}
+                                                    </span>
                                                 )}
                                             </div>
-                                        </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -674,116 +749,62 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
                         <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-md animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-y-auto">
                             <div className="sm:hidden w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 mb-1" />
                             <div className="p-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
-                                <h3 className="font-bold text-slate-900 text-sm">{editingActivo ? 'Editar Activo' : 'Registrar Nuevo Activo'}</h3>
+                                <h3 className="font-semibold text-slate-900 text-sm">{editingActivo ? 'Editar Activo' : 'Registrar Nuevo Activo'}</h3>
                                 <button onClick={() => setShowModal(false)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"><X size={20} /></button>
                             </div>
                             <form onSubmit={handleSubmit} className="p-4 space-y-4">
                                 <div>
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Código Interno</label>
+                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1 block">Código Interno</label>
                                     <input name="codigo_activo" required placeholder="Ej. MDRYTVT-2140"
-                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono font-bold"
+                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono font-semibold"
                                         value={formData.codigo_activo} onChange={handleInputChange} />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Descripción</label>
+                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1 block">Descripción</label>
                                     <textarea name="descripcion" required placeholder="Ej. Monitor Samsung 24 Pulgadas"
                                         className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-medium min-h-[72px] resize-none"
                                         value={formData.descripcion} onChange={handleInputChange} />
                                 </div>
                                 <div className="grid grid-cols-1 gap-3">
                                     <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Estado</label>
-                                        <select name="estado_actual"
+                                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1 block">Origen del Activo</label>
+                                        <select name="origen"
                                             className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-medium"
-                                            value={formData.estado_actual} onChange={handleInputChange}>
-                                            <option>Disponible</option>
-                                            <option>Asignado</option>
-                                            <option>Mantenimiento</option>
+                                            value={formData.origen} onChange={handleInputChange}>
+                                            <option>Compra</option>
                                             <option>Sobrante</option>
-                                            <option>Baja</option>
+                                            <option>Donación</option>
                                         </select>
                                     </div>
                                 </div>
 
-                                <div className="space-y-4 pt-2 border-t border-slate-100">
-                                    <div className="grid grid-cols-1 gap-3">
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block tracking-wider uppercase">Ubicación Física (Edificio)</label>
-                                            <QuickAddSelect
-                                                options={catalogos.ubicaciones}
-                                                value={formData.ubicacion_fisica_id}
-                                                onChange={id => setFormData(p => ({ ...p, ubicacion_fisica_id: id, cat_unidad_id: '', cat_oficina_id: '' }))}
-                                                onRegisterRequest={val => handleRegisterRequest('ubicacion', val)}
-                                                placeholder="Buscar o registrar Edificio..."
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Unidad</label>
-                                            <QuickAddSelect
-                                                options={catalogos.unidades.filter(u => !formData.ubicacion_fisica_id || u.ubicacion_fisica_id === Number(formData.ubicacion_fisica_id))}
-                                                value={formData.cat_unidad_id}
-                                                onChange={id => setFormData(p => ({ ...p, cat_unidad_id: id, cat_oficina_id: '' }))}
-                                                onRegisterRequest={val => handleRegisterRequest('unidad', val)}
-                                                placeholder="Buscar o registrar Unidad..."
-                                                disabled={!formData.ubicacion_fisica_id}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Oficina</label>
-                                            <QuickAddSelect
-                                                options={catalogos.oficinas.filter(o => !formData.cat_unidad_id || o.unidad_id === Number(formData.cat_unidad_id))}
-                                                value={formData.cat_oficina_id}
-                                                onChange={id => setFormData(p => ({ ...p, cat_oficina_id: id }))}
-                                                onRegisterRequest={val => handleRegisterRequest('oficina', val)}
-                                                placeholder="Buscar o registrar Oficina..."
-                                                disabled={!formData.cat_unidad_id}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-3">
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Piso</label>
-                                            <QuickAddSelect
-                                                options={catalogos.pisos}
-                                                value={formData.cat_piso_id}
-                                                onChange={id => setFormData(p => ({ ...p, cat_piso_id: id }))}
-                                                onRegisterRequest={val => handleRegisterRequest('piso', val)}
-                                                labelField="numero"
-                                                placeholder="Buscar o registrar Piso..."
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
                                 <div className="space-y-3 pt-2 border-t border-slate-100">
-                                    <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest block bg-slate-50 p-1 rounded">Clasificación Contable</label>
+                                    <label className="text-[10px] font-semibold text-slate-900 uppercase tracking-widest block bg-slate-50 p-1 rounded">Clasificación Contable</label>
                                     <div className="grid grid-cols-1 gap-3">
                                         <div>
-                                            <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Grupo Contable</label>
-                                            <SearchableSelect
+                                            <label className="text-[9px] font-semibold text-slate-400 uppercase mb-1 block">Grupo Contable</label>
+                                            <QuickAddSelect
                                                 options={catalogos.grupos}
-                                                value={formData.cat_grupo_contable_id || ''}
+                                                value={formData.cat_grupo_contable_id}
                                                 onChange={id => setFormData(p => ({ ...p, cat_grupo_contable_id: id, cat_auxiliar_id: '' }))}
-                                                placeholder="Buscar grupo..."
-                                                emptyLabel="— Seleccionar Grupo —"
+                                                onRegisterRequest={val => handleRegisterRequest('grupo', val)}
+                                                placeholder="Seleccionar Grupo..."
                                             />
                                         </div>
                                         <div>
-                                            <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">
+                                            <label className="text-[9px] font-semibold text-slate-400 uppercase mb-1 block">
                                                 Auxiliar {formData.cat_grupo_contable_id ? <span className="text-indigo-400">({catalogos.auxiliares.filter(a => String(a.cat_grupo_contable_id) === String(formData.cat_grupo_contable_id)).length} opciones)</span> : ''}
                                             </label>
-                                            <SearchableSelect
+                                            <QuickAddSelect
                                                 options={formData.cat_grupo_contable_id
                                                     ? catalogos.auxiliares.filter(a => String(a.cat_grupo_contable_id) === String(formData.cat_grupo_contable_id))
                                                     : catalogos.auxiliares
                                                 }
-                                                value={formData.cat_auxiliar_id || ''}
+                                                value={formData.cat_auxiliar_id}
                                                 onChange={id => setFormData(p => ({ ...p, cat_auxiliar_id: id }))}
-                                                placeholder="Buscar auxiliar..."
-                                                emptyLabel="— Seleccionar Auxiliar —"
-                                                disabled={false}
+                                                onRegisterRequest={val => handleRegisterRequest('auxiliar', val)}
+                                                placeholder="Seleccionar Auxiliar..."
+                                                disabled={!formData.cat_grupo_contable_id && !editingActivo}
                                             />
                                         </div>
                                     </div>
@@ -791,11 +812,11 @@ const ActivosView = ({ authFetch = fetch, currentUser }) => {
 
                                 <div className="flex gap-2 pt-2">
                                     <button type="button" onClick={() => setShowModal(false)}
-                                        className="flex-1 py-2.5 border border-slate-200 text-slate-400 rounded-lg font-bold text-sm hover:bg-slate-50 transition-all">
+                                        className="flex-1 py-2.5 border border-slate-200 text-slate-400 rounded-lg font-semibold text-sm hover:bg-slate-50 transition-all">
                                         Cancelar
                                     </button>
                                     <button type="submit" disabled={saving}
-                                        className="flex-1 py-2.5 bg-indigo-600 text-white rounded-lg font-bold text-sm hover:bg-indigo-700 shadow-md shadow-indigo-500/20 active:scale-95 transition-all disabled:opacity-50">
+                                        className="flex-1 py-2.5 bg-indigo-600 text-white rounded-lg font-semibold text-sm hover:bg-indigo-700 shadow-md shadow-indigo-500/20 active:scale-95 transition-all disabled:opacity-50">
                                         {saving ? 'Guardando...' : 'Guardar'}
                                     </button>
                                 </div>

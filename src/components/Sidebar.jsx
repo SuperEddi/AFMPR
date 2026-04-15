@@ -26,7 +26,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen, currentUser, onLo
             label: 'Monitoreo',
             icon: LayoutDashboard,
             items: [
-                { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-indigo-400', activeBg: 'bg-indigo-500/10', activeText: 'text-indigo-400' },
+                { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-amber-400', activeBg: 'bg-amber-500/10', activeText: 'text-amber-400' },
             ]
         },
         {
@@ -34,9 +34,9 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen, currentUser, onLo
             label: 'Gestión de Activos',
             icon: Package,
             items: [
-                { id: 'activos', label: 'Inventario', icon: Package, color: 'text-amber-400', activeBg: 'bg-amber-500/10', activeText: 'text-amber-400' },
-                { id: 'migraciones', label: 'Migraciones', icon: Database, color: 'text-violet-400', activeBg: 'bg-violet-500/10', activeText: 'text-violet-400' },
-                { id: 'catalogos', label: 'Catálogos', icon: Layers, color: 'text-indigo-400', activeBg: 'bg-indigo-500/10', activeText: 'text-indigo-400' },
+                { id: 'activos', label: 'Inventario', icon: Package, color: 'text-orange-400', activeBg: 'bg-orange-500/10', activeText: 'text-orange-400' },
+                { id: 'migraciones', label: 'Migraciones', icon: Database, color: 'text-amber-500', activeBg: 'bg-amber-500/10', activeText: 'text-amber-500' },
+                { id: 'catalogos', label: 'Catálogos', icon: Layers, color: 'text-amber-400', activeBg: 'bg-amber-500/10', activeText: 'text-amber-400' },
             ]
         },
         {
@@ -44,8 +44,8 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen, currentUser, onLo
             label: 'Documentación',
             icon: FileText,
             items: [
-                { id: 'generar', label: 'Generar Acta', icon: FilePlus, color: 'text-rose-400', activeBg: 'bg-rose-500/10', activeText: 'text-rose-400' },
-                { id: 'historial', label: 'Historial Actas', icon: History, color: 'text-cyan-400', activeBg: 'bg-cyan-500/10', activeText: 'text-cyan-400' },
+                { id: 'generar', label: 'Generar Acta', icon: FilePlus, color: 'text-orange-400', activeBg: 'bg-orange-500/10', activeText: 'text-orange-400' },
+                { id: 'historial', label: 'Historial', icon: History, color: 'text-amber-500', activeBg: 'bg-amber-500/10', activeText: 'text-amber-500' },
             ]
         },
         {
@@ -53,8 +53,8 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen, currentUser, onLo
             label: 'Control y Auditoría',
             icon: ShieldAlert,
             items: [
-                { id: 'control-activos', label: 'Control Funcionario', icon: ClipboardCheck, color: 'text-blue-400', activeBg: 'bg-blue-500/10', activeText: 'text-blue-400' },
-                { id: 'bitacora', label: 'Bitácora', icon: BookOpen, color: 'text-violet-300', activeBg: 'bg-violet-500/10', activeText: 'text-violet-300' },
+                { id: 'control-activos', label: 'Auditoría', icon: ClipboardCheck, color: 'text-amber-500', activeBg: 'bg-amber-500/10', activeText: 'text-amber-500' },
+                { id: 'bitacora', label: 'Bitácora', icon: BookOpen, color: 'text-orange-400', activeBg: 'bg-orange-500/10', activeText: 'text-orange-400' },
             ]
         },
         {
@@ -62,8 +62,8 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen, currentUser, onLo
             label: 'Administración',
             icon: UserCircle,
             items: [
-                { id: 'usuarios', label: 'Gestión Usuarios', icon: Users, color: 'text-emerald-400', activeBg: 'bg-emerald-500/10', activeText: 'text-emerald-400' },
-                { id: 'accesos', label: 'Gestión de Accesos', icon: ShieldCheck, color: 'text-amber-300', activeBg: 'bg-amber-500/10', activeText: 'text-amber-300', adminOnly: true },
+                { id: 'usuarios', label: 'Gestión Usuarios', icon: Users, color: 'text-amber-400', activeBg: 'bg-amber-500/10', activeText: 'text-amber-400' },
+                { id: 'accesos', label: 'Gestión de Accesos', icon: ShieldCheck, color: 'text-orange-300', activeBg: 'bg-orange-500/10', activeText: 'text-orange-300', adminOnly: true },
             ]
         }
     ];
@@ -112,10 +112,11 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen, currentUser, onLo
             )}
 
             {/* Contenedor Sidebar */}
-            <div className={`
-        fixed left-0 top-0 h-screen w-64 bg-slate-950 text-white z-50 border-r border-slate-800/40 shadow-2xl transition-transform duration-300 ease-in-out flex flex-col
-        ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-      `} style={{ paddingLeft: 'env(safe-area-inset-left, 0px)' }}>
+            <aside
+                className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-950 text-white border-r border-slate-800/40 shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col ${isOpen ? 'translate-x-0' : '-translate-x-full'
+                    } lg:translate-x-0`}
+                style={{ paddingLeft: 'env(safe-area-inset-left, 0px)' }}
+            >
 
                 <div className="px-6 pt-8 pb-6 flex justify-between items-center flex-shrink-0" style={{ paddingTop: 'max(2rem, env(safe-area-inset-top, 2rem))' }}>
                     <div>
@@ -124,17 +125,17 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen, currentUser, onLo
                                 <img src="/logoEscudo.png" alt="Logo" className="w-full h-full object-contain" />
                             </div>
                             <div>
-                                <h1 className="text-[15px] font-black tracking-tight leading-none text-white uppercase">
-                                    Activos<br /><span className="text-primary-400">Presidencia</span>
+                                <h1 className="text-[14px] font-bold tracking-tight leading-none text-white uppercase">
+                                    Activos<br /><span className="text-amber-500 mt-1 block">Presidencia</span>
                                 </h1>
                             </div>
                         </div>
                     </div>
                     <button
                         onClick={() => setIsOpen(false)}
-                        className="lg:hidden p-2 hover:bg-slate-800 rounded-lg text-slate-400"
+                        className="lg:hidden p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 active:scale-95 shadow-lg shadow-black/20"
                     >
-                        <X size={24} />
+                        <X size={20} />
                     </button>
                 </div>
 
@@ -150,8 +151,8 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen, currentUser, onLo
                                     className="w-full flex items-center justify-between px-3 py-2 text-slate-500 hover:text-slate-300 transition-colors group"
                                 >
                                     <div className="flex items-center gap-2">
-                                        <cat.icon size={14} className="opacity-50 group-hover:opacity-100" />
-                                        <span className="text-[10px] font-black uppercase tracking-widest">{cat.label}</span>
+                                        <cat.icon size={14} className="opacity-50 group-hover:opacity-100 group-hover:text-amber-400 transition-colors" />
+                                        <span className="text-[10px] font-semibold uppercase tracking-widest group-hover:text-amber-200 transition-colors">{cat.label}</span>
                                     </div>
                                     <ChevronDown size={14} className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
                                 </button>
@@ -186,7 +187,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen, currentUser, onLo
                                                 `}>
                                                     <item.icon size={16} />
                                                 </div>
-                                                <span className={`text-[11px] font-bold tracking-wide uppercase transition-colors ${isActive ? item.activeText : 'text-slate-400 group-hover:text-white'}`}>
+                                                <span className={`text-[11px] font-semibold tracking-wide uppercase transition-colors ${isActive ? item.activeText : 'text-slate-400 group-hover:text-white'}`}>
                                                     {item.label}
                                                 </span>
                                             </button>
@@ -202,11 +203,11 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen, currentUser, onLo
                     {/* User info */}
                     {currentUser && (
                         <div className="flex items-center gap-3 px-4 py-3 mb-2">
-                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black text-white flex-shrink-0 ${currentUser.rol === 'admin' ? 'bg-amber-500' : 'bg-blue-600'}`}>
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-semibold text-white flex-shrink-0 ${currentUser.rol === 'admin' ? 'bg-amber-500' : 'bg-blue-600'}`}>
                                 {currentUser.nombre?.charAt(0).toUpperCase()}
                             </div>
                             <div className="min-w-0">
-                                <p className="text-xs font-bold text-white truncate">{currentUser.nombre}</p>
+                                <p className="text-xs font-semibold text-white truncate">{currentUser.nombre}</p>
                                 <p className="text-[10px] text-slate-400 font-medium capitalize">{currentUser.rol === 'admin' ? 'Administrador' : 'Técnico'}</p>
                             </div>
                         </div>
@@ -217,10 +218,10 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen, currentUser, onLo
                         <div className="p-2 bg-slate-800/50 rounded-xl group-hover:bg-red-400/10 transition-colors">
                             <LogOut size={18} />
                         </div>
-                        <span className="text-xs font-black uppercase tracking-wider">Cerrar Sesión</span>
+                        <span className="text-xs font-semibold uppercase tracking-wider">Cerrar Sesión</span>
                     </button>
                 </div>
-            </div>
+            </aside>
         </>
     );
 };

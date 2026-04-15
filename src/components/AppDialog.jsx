@@ -76,7 +76,7 @@ export const AppDialog = ({ dialog, onConfirm, onCancel }) => {
 
                     {/* Title */}
                     {dialog.title && (
-                        <h3 className="text-base font-black text-slate-900 leading-tight">
+                        <h3 className="text-base font-semibold text-slate-900 leading-tight">
                             {dialog.title}
                         </h3>
                     )}
@@ -91,14 +91,14 @@ export const AppDialog = ({ dialog, onConfirm, onCancel }) => {
                         {isConfirm && (
                             <button
                                 onClick={onCancel}
-                                className="flex-1 py-2.5 border border-slate-200 text-slate-500 rounded-xl font-bold text-sm hover:bg-slate-50 transition-all"
+                                className="flex-1 py-2.5 border border-slate-200 text-slate-500 rounded-xl font-semibold text-sm hover:bg-slate-50 transition-all"
                             >
                                 Cancelar
                             </button>
                         )}
                         <button
                             onClick={onConfirm}
-                            className={`${isConfirm ? 'flex-1' : 'px-8'} py-2.5 text-white rounded-xl font-bold text-sm shadow-md transition-all active:scale-95 ${style.confirmBtn}`}
+                            className={`${isConfirm ? 'flex-1' : 'px-8'} py-2.5 text-white rounded-xl font-semibold text-sm shadow-md transition-all active:scale-95 ${style.confirmBtn}`}
                         >
                             {dialog.confirmText || style.confirmText}
                         </button>

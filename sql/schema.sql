@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS ubicacion_fisica (
     direccion TEXT,
     observaciones TEXT,
     registrado_por TEXT,
+    activo INTEGER DEFAULT 1,
     fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -21,6 +22,7 @@ CREATE TABLE IF NOT EXISTS cat_unidades (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre TEXT NOT NULL UNIQUE,
     ubicacion_fisica_id INTEGER,
+    activo INTEGER DEFAULT 1,
     FOREIGN KEY (ubicacion_fisica_id) REFERENCES ubicacion_fisica(id)
 );
 
@@ -28,12 +30,14 @@ CREATE TABLE IF NOT EXISTS cat_oficinas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre TEXT NOT NULL UNIQUE,
     unidad_id INTEGER,
+    activo INTEGER DEFAULT 1,
     FOREIGN KEY (unidad_id) REFERENCES cat_unidades(id)
 );
 
 CREATE TABLE IF NOT EXISTS cat_pisos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    numero TEXT NOT NULL UNIQUE
+    numero TEXT NOT NULL UNIQUE,
+    activo INTEGER DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS cat_auxiliares (
@@ -41,6 +45,7 @@ CREATE TABLE IF NOT EXISTS cat_auxiliares (
     nombre TEXT NOT NULL UNIQUE,
     cat_grupo_contable_id INTEGER,
     registrado_por TEXT,
+    activo INTEGER DEFAULT 1,
     fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (cat_grupo_contable_id) REFERENCES cat_grupos_contables(id)
 );
@@ -51,6 +56,7 @@ CREATE TABLE IF NOT EXISTS cat_grupos_contables (
     vida_util INTEGER,
     observaciones TEXT,
     registrado_por TEXT,
+    activo INTEGER DEFAULT 1,
     fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
