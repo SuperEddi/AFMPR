@@ -888,7 +888,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                     </div>
                 </div>
 
-                <div className="bg-white border border-slate-200 rounded-xl min-h-[400px]">
+                <div className="bg-white border border-slate-200 rounded-xl min-h-[400px] relative z-20">
                     {step === 1 && (
                         <div className="p-4 space-y-4">
                             <div className="flex gap-2 p-1 bg-slate-100 rounded-lg w-fit">
@@ -1389,7 +1389,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                 </div>
 
                 {step < 3 && (
-                    <div className="flex justify-between items-center p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
+                    <div className="flex justify-between items-center p-4 bg-white border border-slate-200 rounded-xl shadow-sm relative z-0">
                         <button onClick={() => step === 1 ? resetForm() : setStep(s => s - 1)} className="text-slate-400 font-semibold text-sm">Regresar</button>
                         <button disabled={loading || (step === 1 && !selectedUser && !isNewUser) || (step === 2 && activosSeleccionados.length === 0)} onClick={step === 2 ? handleFinish : handleNextStep} className={`px-8 py-3 rounded-xl text-white font-semibold text-sm shadow-lg active:scale-95 disabled: opacity-50 ${accentClasses.bg} ${accentClasses.shadow}`}>{loading ? 'Procesando...' : step === 2 ? 'Finalizar' : 'Continuar'}</button>
                     </div>
