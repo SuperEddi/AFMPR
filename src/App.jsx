@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 function App() {
-    console.log('App loaded - VERSION: 2026-04-14 21:30');
+    console.log('App loaded - VERSION: 2026-04-16 21:45');
     const [activeTab, setActiveTab] = useState('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
         const saved = localStorage.getItem('sidebarOpen');
@@ -82,7 +82,7 @@ function App() {
     useEffect(() => {
         if (!currentUser) return;
 
-        const INACTIVITY_LIMIT = 150000;
+        const INACTIVITY_LIMIT = 3600000; // 60 minutos de inactividad
         let lastActivity = Date.now();
 
         const updateActivity = () => {
