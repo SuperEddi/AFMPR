@@ -30,7 +30,7 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
     const [liberandoActivo, setLiberandoActivo] = useState(null);
     const [editingAsset, setEditingAsset] = useState(null);
     const [savingAsset, setSavingAsset] = useState(false);
-    const [selectedActasIds, setSelectedActasIds] = useState([]);
+    const [selectedUbicKeys, setSelectedUbicKeys] = useState([]);
 
     // --- NEW STATES (CONSOLIDADO) ---
     const [activeTab, setActiveTab] = useState('historial');
@@ -100,7 +100,7 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
         const persona = agrupados.find(p => p.ci === selectedCI);
         if (!persona) return null;
         const uKey = selectedUbicKey;
-        const ub = persona.ubicaciones.find(u => `${u.unidad || ''}|${u.oficina || ''}|${u.piso || ''}|${u.acta_id || ''}` === uKey);
+        const ub = persona.ubicaciones.find(u => `${u.edificio || ''}|${u.unidad || ''}|${u.oficina || ''}|${u.piso || ''}` === uKey);
         return { persona, ubicacion: ub };
     }, [agrupados, selectedCI, selectedUbicKey]);
 
@@ -371,10 +371,21 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                 // Verificar espacio para el header de oficina + al menos 2 filas
                 if (y + 30 > PH - MB) { doc.addPage(); y = 20; }
 
-                doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 100, 0);
-                doc.text(`OFICINA: ${oficina.toUpperCase()} (Piso: ${piso}) - ${unidad.toUpperCase()} (Acta: #${actaId})`, ML, y);
+                doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+
+                doc.setTextColor(0, 0, 0); // Black for prefix
+                doc.text(`OFICINA: `, ML, y);
+                let currentX = ML + doc.getTextWidth(`OFICINA: `);
+
+                doc.setTextColor(0, 100, 0); // Green for office
+                doc.text(oficina.toUpperCase(), currentX, y);
+                currentX += doc.getTextWidth(oficina.toUpperCase());
+
+                doc.setTextColor(0, 0, 0); // Black for suffix
+                doc.text(` (Piso: ${piso}) - ${unidad.toUpperCase()} (Acta: #${actaId})`, currentX, y);
+
                 y += 2;
-                doc.setDrawColor(0, 100, 0); doc.setLineWidth(0.2);
+                doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.2); // Set line to black as requested
                 doc.line(ML, y, PW - MR, y);
                 y += 4;
 
@@ -660,15 +671,22 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                                                 <div className="space-y-2">
                                                     <div className="flex items-center justify-between px-1">
                                                         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ubicaciones Actuales</h4>
-                                                        {selectedActasIds.length > 0 && (
+                                                        {selectedUbicKeys.length > 0 && (
                                                             <button
                                                                 onClick={() => {
-                                                                    const sel = actas.filter(a => selectedActasIds.includes(a.id));
-                                                                    handlePrintMultiple(sel);
+                                                                    const selUbics = persona.ubicaciones.filter(u => selectedUbicKeys.includes(`${u.edificio || ''}|${u.unidad || ''}|${u.oficina || ''}|${u.piso || ''}`));
+                                                                    const combinedActivos = selUbics.flatMap(u => u.activos);
+                                                                    const combinedUbicacion = {
+                                                                        unidad: 'VARIAS UNIDADES',
+                                                                        oficina: 'VARIAS OFICINAS',
+                                                                        piso: 'VARIOS',
+                                                                        activos: combinedActivos
+                                                                    };
+                                                                    handlePrintConsolidado(persona, combinedUbicacion);
                                                                 }}
                                                                 className="text-[9px] font-black bg-emerald-600 text-white px-2 py-1 rounded-lg uppercase tracking-tighter hover:bg-emerald-700 transition-all flex items-center gap-1"
                                                             >
-                                                                <Printer size={10} /> Imprimir {selectedActasIds.length} Seleccionadas
+                                                                <Printer size={10} /> Imprimir {selectedUbicKeys.length} Seleccionadas
                                                             </button>
                                                         )}
                                                     </div>
@@ -678,16 +696,17 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                                                                 <input
                                                                     type="checkbox"
                                                                     className="w-4 h-4 rounded border-slate-400 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                                                                    checked={selectedActasIds.includes(u.acta_id)}
+                                                                    checked={selectedUbicKeys.includes(`${u.edificio || ''}|${u.unidad || ''}|${u.oficina || ''}|${u.piso || ''}`)}
                                                                     onChange={(e) => {
-                                                                        setSelectedActasIds(prev =>
-                                                                            prev.includes(u.acta_id) ? prev.filter(x => x !== u.acta_id) : [...prev, u.acta_id]
+                                                                        const key = `${u.edificio || ''}|${u.unidad || ''}|${u.oficina || ''}|${u.piso || ''}`;
+                                                                        setSelectedUbicKeys(prev =>
+                                                                            prev.includes(key) ? prev.filter(x => x !== key) : [...prev, key]
                                                                         );
                                                                     }}
                                                                 />
                                                                 <div className="flex items-center gap-3 cursor-pointer" onClick={() => {
                                                                     setSelectedCI(persona.ci);
-                                                                    setSelectedUbicKey(`${u.unidad || ''}|${u.oficina || ''}|${u.piso || ''}|${u.acta_id || ''}`);
+                                                                    setSelectedUbicKey(`${u.edificio || ''}|${u.unidad || ''}|${u.oficina || ''}|${u.piso || ''}`);
                                                                 }}>
                                                                     <MapPin size={16} className="text-slate-400" />
                                                                     <div>
@@ -698,7 +717,7 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                                                             </div>
                                                             <div className="flex items-center gap-3">
                                                                 <div className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">{u.activos.length} ACTIVOS</div>
-                                                                <button onClick={(e) => { e.stopPropagation(); setSelectedCI(persona.ci); setSelectedUbicKey(`${u.unidad || ''}|${u.oficina || ''}|${u.piso || ''}|${u.acta_id || ''}`); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-all" title="Gestionar Activos"><Pencil size={16} /></button>
+                                                                <button onClick={(e) => { e.stopPropagation(); setSelectedCI(persona.ci); setSelectedUbicKey(`${u.edificio || ''}|${u.unidad || ''}|${u.oficina || ''}|${u.piso || ''}`); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-all" title="Gestionar Activos"><Pencil size={16} /></button>
                                                                 <button onClick={(e) => { e.stopPropagation(); handlePrintConsolidado(persona, u); }} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all" title="Imprimir Acta Consolidada"><Printer size={16} /></button>
                                                             </div>
                                                         </div>
