@@ -306,24 +306,46 @@ app.get('/usuarios', async (c) => {
     const institution = c.req.header('x-institution') || 'tierras';
 
     const fetchDBUsuarios = async (db: D1Database, instName: string) => {
-        const { results } = await db.prepare(`
-            SELECT u.id, u.nombre_completo, u.ci, u.cargo, u.fecha_registro,
-                   u.cat_unidad_id, u.ubicacion_fisica_id,
-                   un.nombre as unidad, uf.nombre as edificio, uf.direccion as edificio_direccion,
-                   (SELECT uo.oficina_id FROM usuarios_oficinas uo WHERE uo.usuario_id = u.id LIMIT 1) as cat_oficina_id,
-                   (SELECT off.nombre FROM cat_oficinas off WHERE off.id = (SELECT uo2.oficina_id FROM usuarios_oficinas uo2 WHERE uo2.usuario_id = u.id LIMIT 1)) as oficina,
-                   (SELECT GROUP_CONCAT(off.nombre || ' (' || uf2.nombre || ' - ' || COALESCE(uf2.direccion, 'S/D') || ')', ' | ') 
-                    FROM usuarios_oficinas uo 
-                    JOIN cat_oficinas off ON uo.oficina_id = off.id 
-                    JOIN cat_unidades un2 ON off.unidad_id = un2.id
-                    JOIN ubicacion_fisica uf2 ON un2.ubicacion_fisica_id = uf2.id
-                    WHERE uo.usuario_id = u.id) as oficinas_detalle
-            FROM usuarios u
-            LEFT JOIN cat_unidades un ON u.cat_unidad_id = un.id
-            LEFT JOIN ubicacion_fisica uf ON u.ubicacion_fisica_id = uf.id
-            ORDER BY u.nombre_completo ASC
-        `).all();
-        return results.map(r => ({ ...r, institucion: instName }));
+        // Intentamos primero la query completa (con ubicacion_fisica_id y cat_piso_id en usuarios)
+        try {
+            const { results } = await db.prepare(`
+                SELECT u.id, u.nombre_completo, u.ci, u.cargo, u.fecha_registro,
+                       u.cat_unidad_id, u.ubicacion_fisica_id, u.cat_piso_id,
+                       un.nombre as unidad, uf.nombre as edificio, uf.direccion as edificio_direccion,
+                       ps.numero as piso,
+                       (SELECT uo.oficina_id FROM usuarios_oficinas uo WHERE uo.usuario_id = u.id LIMIT 1) as cat_oficina_id,
+                       (SELECT off.nombre FROM cat_oficinas off WHERE off.id = (SELECT uo2.oficina_id FROM usuarios_oficinas uo2 WHERE uo2.usuario_id = u.id LIMIT 1)) as oficina,
+                       (SELECT GROUP_CONCAT(off.nombre || ' (' || uf2.nombre || ' - ' || COALESCE(uf2.direccion, 'S/D') || ')', ' | ')
+                        FROM usuarios_oficinas uo
+                        JOIN cat_oficinas off ON uo.oficina_id = off.id
+                        JOIN cat_unidades un2 ON off.unidad_id = un2.id
+                        JOIN ubicacion_fisica uf2 ON un2.ubicacion_fisica_id = uf2.id
+                        WHERE uo.usuario_id = u.id) as oficinas_detalle
+                FROM usuarios u
+                LEFT JOIN cat_unidades un ON u.cat_unidad_id = un.id
+                LEFT JOIN ubicacion_fisica uf ON u.ubicacion_fisica_id = uf.id
+                LEFT JOIN cat_pisos ps ON u.cat_piso_id = ps.id
+                ORDER BY u.nombre_completo ASC
+            `).all();
+            return results.map(r => ({ ...r, institucion: instName }));
+        } catch (_fullQueryErr) {
+            // Fallback: la DB puede no tener las columnas cat_piso_id / ubicacion_fisica_id en usuarios
+            // (necesita ejecutar sql/add_piso_to_usuarios.sql). Usamos query reducida para no perder datos.
+            const { results } = await db.prepare(`
+                SELECT u.id, u.nombre_completo, u.ci, u.cargo, u.fecha_registro,
+                       u.cat_unidad_id,
+                       NULL as ubicacion_fisica_id, NULL as cat_piso_id,
+                       un.nombre as unidad,
+                       NULL as edificio, NULL as edificio_direccion, NULL as piso,
+                       (SELECT uo.oficina_id FROM usuarios_oficinas uo WHERE uo.usuario_id = u.id LIMIT 1) as cat_oficina_id,
+                       (SELECT off.nombre FROM cat_oficinas off WHERE off.id = (SELECT uo2.oficina_id FROM usuarios_oficinas uo2 WHERE uo2.usuario_id = u.id LIMIT 1)) as oficina,
+                       NULL as oficinas_detalle
+                FROM usuarios u
+                LEFT JOIN cat_unidades un ON u.cat_unidad_id = un.id
+                ORDER BY u.nombre_completo ASC
+            `).all();
+            return results.map(r => ({ ...r, institucion: instName }));
+        }
     };
 
     if (institution === 'consolidado') {
@@ -349,7 +371,7 @@ app.get('/usuarios', async (c) => {
 
 app.post('/usuarios', async (c) => {
     const body = await c.req.json();
-    const { nombre_completo, ci, cargo, cat_unidad_id, ubicacion_fisica_id, oficinas_ids, registrado_por } = body;
+    const { nombre_completo, ci, cargo, cat_unidad_id, ubicacion_fisica_id, cat_piso_id, oficinas_ids, registrado_por } = body;
 
     try {
         let db: any = getDB(c);
@@ -358,22 +380,30 @@ app.post('/usuarios', async (c) => {
         const cleanId = (val: any) => (val === '' || val === undefined || val === 'undefined') ? null : val;
 
         const result = await db.prepare(
-            'INSERT INTO usuarios (nombre_completo, ci, cargo, registrado_por) VALUES (?, ?, ?, ?)'
+            'INSERT INTO usuarios (nombre_completo, ci, cargo, cat_unidad_id, ubicacion_fisica_id, cat_piso_id, registrado_por) VALUES (?, ?, ?, ?, ?, ?, ?)'
         ).bind(
             nombre_completo ?? '',
             ci ?? '',
             cargo ?? null,
+            cleanId(cat_unidad_id),
+            cleanId(ubicacion_fisica_id),
+            cleanId(cat_piso_id),
             registrado_por ?? null
         ).run();
 
         const userId = result.meta.last_row_id;
 
         // Insertar múltiples oficinas en la tabla intermedia
-        if (oficinas_ids && Array.isArray(oficinas_ids)) {
-            const officeStatements = oficinas_ids.map(oid =>
+        const finalOffices = [...(oficinas_ids || [])];
+        if (finalOffices.length === 0 && body.cat_oficina_id) {
+            finalOffices.push(body.cat_oficina_id);
+        }
+
+        if (finalOffices.length > 0) {
+            const officeStatements = finalOffices.map(oid =>
                 db.prepare('INSERT OR IGNORE INTO usuarios_oficinas (usuario_id, oficina_id) VALUES (?, ?)').bind(userId, oid)
             );
-            if (officeStatements.length > 0) await db.batch(officeStatements);
+            await db.batch(officeStatements);
         }
 
         await invalidateConsolidadoCache(c.env.CACHE);
@@ -387,7 +417,7 @@ app.post('/usuarios', async (c) => {
 app.put('/usuarios/:id', async (c) => {
     const id = c.req.param('id');
     const body = await c.req.json();
-    const { nombre_completo, ci, cargo, cat_unidad_id, ubicacion_fisica_id, oficinas_ids } = body;
+    const { nombre_completo, ci, cargo, cat_unidad_id, ubicacion_fisica_id, cat_piso_id, oficinas_ids } = body;
 
     try {
         let db: any = getDB(c);
@@ -396,11 +426,14 @@ app.put('/usuarios/:id', async (c) => {
         const cleanId = (val: any) => (val === '' || val === undefined || val === 'undefined') ? null : val;
 
         await db.prepare(
-            'UPDATE usuarios SET nombre_completo=?, ci=?, cargo=? WHERE id=?'
+            'UPDATE usuarios SET nombre_completo=?, ci=?, cargo=?, cat_unidad_id=?, ubicacion_fisica_id=?, cat_piso_id=? WHERE id=?'
         ).bind(
             nombre_completo ?? '',
             ci ?? '',
             cargo ?? null,
+            cleanId(cat_unidad_id),
+            cleanId(ubicacion_fisica_id),
+            cleanId(cat_piso_id),
             id
         ).run();
 
@@ -825,21 +858,32 @@ app.put('/activos/:id/auditoria-asignar', async (c) => {
     const id = c.req.param('id');
     const {
         descripcion, cat_auxiliar_id, cat_grupo_contable_id,
-        origen, usuario_auditado_id, realizado_por
+        origen, usuario_auditado_id, realizado_por,
+        // Ubicación personalizada (opcional — si no se envía, se hereda del usuario)
+        ubicacion_fisica_id: ubicPersonalizada,
+        cat_unidad_id: unidadPersonalizada,
+        cat_oficina_id: oficinaPersonalizada,
+        cat_piso_id: pisoPersonalizado,
     } = await c.req.json();
 
     try {
         const db = getDB(c);
         if (!db) return c.json({ error: 'DB no disponible' }, 500);
 
-        // 1. Obtener datos del usuario para heredar ubicación
-        const user = await db.prepare('SELECT cat_unidad_id, ubicacion_fisica_id FROM usuarios WHERE id = ?').bind(usuario_auditado_id).first();
+        // 1. Obtener datos del usuario para heredar ubicación si no se especifica
+        const user = await db.prepare('SELECT cat_unidad_id, ubicacion_fisica_id, cat_piso_id FROM usuarios WHERE id = ?').bind(usuario_auditado_id).first();
         if (!user) throw new Error('Usuario no encontrado');
 
-        // 2. Obtener oficina (usamos la primera oficina vinculada si tiene múltiples)
+        // 2. Obtener oficina del usuario como fallback
         const office = await db.prepare('SELECT oficina_id FROM usuarios_oficinas WHERE usuario_id = ? LIMIT 1').bind(usuario_auditado_id).first();
 
-        // 3. Actualizar activo
+        // 3. Resolver ubicación: priorizar la personalizada, luego la del usuario
+        const finalUbicacion = ubicPersonalizada || (user as any).ubicacion_fisica_id;
+        const finalUnidad = unidadPersonalizada || (user as any).cat_unidad_id;
+        const finalOficina = oficinaPersonalizada !== undefined ? (oficinaPersonalizada || null) : ((office as any)?.oficina_id || null);
+        const finalPiso = pisoPersonalizado || (user as any).cat_piso_id || null;
+
+        // 4. Actualizar activo
         await db.prepare(`
             UPDATE activos SET 
                 descripcion = ?, 
@@ -850,7 +894,8 @@ app.put('/activos/:id/auditoria-asignar', async (c) => {
                 usuario_actual_id = ?,
                 cat_unidad_id = ?,
                 ubicacion_fisica_id = ?,
-                cat_oficina_id = ?
+                cat_oficina_id = ?,
+                cat_piso_id = ?
             WHERE id = ?
         `).bind(
             descripcion,
@@ -858,13 +903,14 @@ app.put('/activos/:id/auditoria-asignar', async (c) => {
             cat_grupo_contable_id || null,
             origen || 'Sobrante',
             usuario_auditado_id,
-            (user as any).cat_unidad_id,
-            (user as any).ubicacion_fisica_id,
-            (office as any)?.oficina_id || null,
+            finalUnidad,
+            finalUbicacion,
+            finalOficina,
+            finalPiso,
             id
         ).run();
 
-        // 4. Actualizar registro de auditoría a 'Correcto'
+        // 5. Actualizar registro de auditoría a 'Correcto'
         await db.prepare(`
             UPDATE auditorias_fisicas 
             SET hallazgo = 'Correcto', realizado_por = ? 
@@ -878,6 +924,7 @@ app.put('/activos/:id/auditoria-asignar', async (c) => {
         return c.json({ error: formatError(e) }, 400);
     }
 });
+
 
 
 
@@ -963,7 +1010,7 @@ app.get('/activos/agrupados', async (c) => {
             const oficinas = row.a_oficina || row.u_oficinas || '';
             const piso = row.a_piso || '';
 
-            const keyOficina = `${edificio || ''}|${unidad || ''}|${oficinas || ''}|${piso || ''}|${row.last_acta_id || ''}`;
+            const keyOficina = `${edificio || ''}|${unidad || ''}|${oficinas || ''}|${piso || ''}`;
 
             if (!persona.ubicaciones.has(keyOficina)) {
                 persona.ubicaciones.set(keyOficina, {
@@ -978,6 +1025,11 @@ app.get('/activos/agrupados', async (c) => {
                     observaciones: row.observaciones || null,
                     activos: []
                 });
+            } else if (row.last_acta_id && (!persona.ubicaciones.get(keyOficina).acta_id || row.last_acta_id > persona.ubicaciones.get(keyOficina).acta_id)) {
+                // Actualizar a la última acta si encontramos una más reciente para esta misma ubicación
+                const ub = persona.ubicaciones.get(keyOficina);
+                ub.acta_id = row.last_acta_id;
+                ub.acta_numero = String(row.last_acta_id).padStart(5, '0');
             }
 
             persona.ubicaciones.get(keyOficina).activos.push({
@@ -1029,9 +1081,17 @@ app.get('/actas', async (c) => {
 
         const fetchActasFromDB = async (db: D1Database, instName: string) => {
             let query = `
-                SELECT a.*, u.nombre_completo as usuario, ? as institucion
+                SELECT a.*, u.nombre_completo as usuario, ? as institucion,
+                       COALESCE(uf.nombre, u_uf.nombre) as ubicacion_fisica,
+                       COALESCE(un.nombre, u_un.nombre) as unidad,
+                       COALESCE(ofc.nombre, (SELECT off.nombre FROM cat_oficinas off WHERE off.id = (SELECT uo.oficina_id FROM usuarios_oficinas uo WHERE uo.usuario_id = u.id LIMIT 1))) as oficina
                 FROM actas a
                 JOIN usuarios u ON a.usuario_id = u.id
+                LEFT JOIN ubicacion_fisica uf ON a.ubicacion_fisica_id = uf.id
+                LEFT JOIN cat_unidades un ON a.cat_unidad_id = un.id
+                LEFT JOIN cat_oficinas ofc ON a.cat_oficina_id = ofc.id
+                LEFT JOIN ubicacion_fisica u_uf ON u.ubicacion_fisica_id = u_uf.id
+                LEFT JOIN cat_unidades u_un ON u.cat_unidad_id = u_un.id
             `;
             const params: any[] = [instName];
 
@@ -1085,7 +1145,7 @@ app.post('/actas', async (c) => {
         return c.json({ error: "Faltan datos obligatorios", message: "La lista de activos seleccionados es requerida." }, 400);
     }
 
-    let actaId = appendToActaId;
+    let actaId = appendToActaId ? Number(appendToActaId) : null;
 
     try {
         const institution = (c.req.header('x-institution') || '').toLowerCase();
@@ -1285,10 +1345,11 @@ app.post('/migrate', async (c) => {
                     // Resolución de ubicación y unidad para el usuario
                     const uId = await resolveCatalog('ubicacion_fisica', 'nombre', item.edificio, ubisMap);
                     const unId = await resolveCatalog('cat_unidades', 'nombre', item.unidad, unitsMap);
+                    const flId = await resolveCatalog('cat_pisos', 'numero', item.piso, floorsMap);
 
                     userStatements.push(
-                        db.prepare('INSERT INTO usuarios (nombre_completo, ci, cargo, ubicacion_fisica_id, cat_unidad_id) VALUES (?, ?, ?, ?, ?)')
-                            .bind(nombre, ciStr, item.responsable_cargo || item.cargo || null, uId, unId)
+                        db.prepare('INSERT INTO usuarios (nombre_completo, ci, cargo, ubicacion_fisica_id, cat_unidad_id, cat_piso_id) VALUES (?, ?, ?, ?, ?, ?)')
+                            .bind(nombre, ciStr, item.responsable_cargo || item.cargo || null, uId, unId, flId)
                     );
                     newUsersInBatch.add(ciStr);
                 }
@@ -1471,7 +1532,21 @@ app.get('/actas/:id', async (c) => {
             SELECT da.activo_id as id, da.estado_fisico, ac.codigo_activo, ac.descripcion
             FROM detalles_acta da
             JOIN activos ac ON da.activo_id = ac.id
-            WHERE da.acta_id = ?
+            JOIN actas a ON da.acta_id = a.id
+            WHERE da.acta_id = ? 
+              AND (
+                  a.tipo_acta != 'Asignación' 
+                  OR (
+                      ac.usuario_actual_id = a.usuario_id 
+                      AND da.acta_id = (
+                          SELECT ac2.id
+                          FROM detalles_acta da2 
+                          JOIN actas ac2 ON da2.acta_id = ac2.id 
+                          WHERE da2.activo_id = ac.id AND ac2.tipo_acta = 'Asignación' 
+                          ORDER BY ac2.id DESC LIMIT 1
+                      )
+                  )
+              )
         `).bind(id).all();
 
         return c.json({ ...acta, activos });
@@ -1750,6 +1825,9 @@ app.post('/auth/migrate', async (c) => {
                     fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             `).run();
+
+            // Columnas cat_piso_id en usuarios
+            try { await db.prepare('ALTER TABLE usuarios ADD COLUMN cat_piso_id INTEGER').run(); } catch { }
 
             // Columnas auxiliares y grupos contables en activos
             try { await db.prepare('ALTER TABLE activos ADD COLUMN cat_auxiliar_id INTEGER').run(); } catch { }

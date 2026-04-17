@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, Edit2, UserPlus, X, Users, MapPin, Briefcase, Fingerprint, Building } from 'lucide-react';
+import { Search, Edit2, UserPlus, X, Users, MapPin, Briefcase, Fingerprint, Building, Layers } from 'lucide-react';
 import { AppDialog, useDialog } from '../components/AppDialog';
 
 const INST_CONFIG = {
@@ -27,7 +27,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser, institution }) => {
     const [editingUser, setEditingUser] = useState(null);
     const [saving, setSaving] = useState(false);
     const [formData, setFormData] = useState({
-        nombre_completo: '', ci: '', cargo: '', ubicacion_fisica_id: '', cat_unidad_id: '', oficinas_ids: []
+        nombre_completo: '', ci: '', cargo: '', ubicacion_fisica_id: '', cat_unidad_id: '', cat_piso_id: '', oficinas_ids: []
     });
     const { showAlert, dialogProps } = useDialog();
 
@@ -75,6 +75,12 @@ const UsuariosView = ({ authFetch = fetch, currentUser, institution }) => {
 
     const handleInputChange = e => setFormData(p => ({ ...p, [e.target.name]: e.target.value }));
 
+    // Al cambiar edificio, resetear unidad y oficinas para mantener coherencia
+    const handleEdificioChange = e => {
+        const val = e.target.value;
+        setFormData(p => ({ ...p, ubicacion_fisica_id: val, cat_unidad_id: '', oficinas_ids: [] }));
+    };
+
     const handleOfficeChange = (officeId) => {
         setFormData(p => {
             const current = p.oficinas_ids || [];
@@ -95,10 +101,11 @@ const UsuariosView = ({ authFetch = fetch, currentUser, institution }) => {
                 cargo: user.cargo,
                 ubicacion_fisica_id: user.ubicacion_fisica_id || '',
                 cat_unidad_id: user.cat_unidad_id || '',
+                cat_piso_id: user.cat_piso_id || '',
                 oficinas_ids: user.oficinas_ids || []
             });
         } else {
-            setFormData({ nombre_completo: '', ci: '', cargo: '', ubicacion_fisica_id: '', cat_unidad_id: '', oficinas_ids: [] });
+            setFormData({ nombre_completo: '', ci: '', cargo: '', ubicacion_fisica_id: '', cat_unidad_id: '', cat_piso_id: '', oficinas_ids: [] });
         }
         setShowModal(true);
     };
@@ -358,6 +365,39 @@ const UsuariosView = ({ authFetch = fetch, currentUser, institution }) => {
                                     </div>
                                 </div>
 
+                                {/* Edificio / Ubicación Física */}
+                                <div>
+                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
+                                        <MapPin size={11} /> Edificio / Ubicación Física
+                                    </label>
+                                    <select name="ubicacion_fisica_id"
+                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
+                                        value={formData.ubicacion_fisica_id || ''} onChange={handleEdificioChange}
+                                    >
+                                        <option value="">Seleccione Edificio...</option>
+                                        {(catalogos.ubicaciones || []).map(ub => (
+                                            <option key={ub.id} value={ub.id}>{ub.nombre}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Piso */}
+                                <div>
+                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
+                                        <Layers size={11} /> Piso
+                                    </label>
+                                    <select name="cat_piso_id"
+                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
+                                        value={formData.cat_piso_id || ''} onChange={handleInputChange}
+                                    >
+                                        <option value="">Seleccione Piso...</option>
+                                        {(catalogos.pisos || []).map(p => (
+                                            <option key={p.id} value={p.id}>{p.numero}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Unidad */}
                                 <div>
                                     <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
                                         <Building size={11} /> Unidad (Catálogo)
@@ -367,7 +407,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser, institution }) => {
                                         value={formData.cat_unidad_id || ''} onChange={handleInputChange}
                                     >
                                         <option value="">Seleccione Unidad...</option>
-                                        {catalogos.unidades
+                                        {(catalogos.unidades || [])
                                             .filter(u => !formData.ubicacion_fisica_id || u.ubicacion_fisica_id === Number(formData.ubicacion_fisica_id))
                                             .map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                                     </select>

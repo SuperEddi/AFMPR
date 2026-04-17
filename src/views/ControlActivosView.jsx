@@ -1,8 +1,10 @@
-/* VERSION: 2026-04-14 21:28 */
+/* VERSION: 2026-04-14 22:20 */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, ClipboardCheck, User, Package, CheckCircle, AlertCircle, X, MapPin, ListFilter, AlertTriangle, CheckSquare, Download, FileText, Printer, Trash2 } from 'lucide-react';
+import { Search, ClipboardCheck, User, Package, CheckCircle, AlertCircle, X, MapPin, ListFilter, AlertTriangle, CheckSquare, Download, FileText, Printer, Trash2, Building2, PlusCircle } from 'lucide-react';
 import { AppDialog, useDialog } from '../components/AppDialog';
 import { exportToExcel } from '../utils/excelExport';
+import QuickAddSelect from '../components/QuickAddSelect';
+import QuickRegisterModal from '../components/QuickRegisterModal';
 
 const getInstitutionStyle = (inst) => {
     const i = (inst || '').toUpperCase();
@@ -49,14 +51,19 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
     const [activeListTab, setActiveListTab] = useState('pending'); // 'pending', 'found', 'surplus'
     const [printing, setPrinting] = useState(false);
     const [assetObservations, setAssetObservations] = useState({}); // { activoId: 'obs' }
-    const [catalogos, setCatalogos] = useState({ auxiliares: [], grupos: [] });
+    const [catalogos, setCatalogos] = useState({ auxiliares: [], grupos: [], ubicaciones: [], unidades: [], oficinas: [], pisos: [] });
     const [assigningAsset, setAssigningAsset] = useState(null); // Activo que se está asignando
     const [assignFormData, setAssignFormData] = useState({
         descripcion: '',
         cat_auxiliar_id: '',
         cat_grupo_contable_id: '',
-        origen: 'Sobrante'
+        origen: 'Sobrante',
+        ubicacion_fisica_id: '',
+        cat_unidad_id: '',
+        cat_oficina_id: '',
+        cat_piso_id: '',
     });
+    const [quickRegister, setQuickRegister] = useState({ isOpen: false, type: '', initialName: '', contextData: {} });
     const { showAlert, showConfirm, dialogProps } = useDialog();
 
     const fetchData = useCallback(async () => {
@@ -349,8 +356,44 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
             descripcion: asset.descripcion || '',
             cat_auxiliar_id: asset.cat_auxiliar_id || '',
             cat_grupo_contable_id: asset.cat_grupo_contable_id || '',
-            origen: asset.origen || 'Sobrante'
+            origen: asset.origen || 'Sobrante',
+            // Pre-cargar con la ubicación del usuario seleccionado
+            ubicacion_fisica_id: selectedUser?.ubicacion_fisica_id ? String(selectedUser.ubicacion_fisica_id) : '',
+            cat_unidad_id: selectedUser?.cat_unidad_id ? String(selectedUser.cat_unidad_id) : '',
+            cat_oficina_id: '',
+            cat_piso_id: selectedUser?.cat_piso_id ? String(selectedUser.cat_piso_id) : '',
         });
+    };
+
+    const handleQuickSaveUbicacion = async (type, formData) => {
+        let endpoint = '';
+        if (type === 'ubicacion') endpoint = '/api/ubicaciones';
+        else if (type === 'unidad') endpoint = '/api/unidades';
+        else if (type === 'oficina') endpoint = '/api/oficinas';
+        else if (type === 'piso') endpoint = '/api/pisos';
+
+        const res = await authFetch(endpoint, {
+            method: 'POST',
+            body: JSON.stringify(formData)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Error al guardar');
+
+        // Refrescar catálogos y seleccionar el nuevo registro automáticamente
+        const cRes = await authFetch('/api/catalogos');
+        const cData = await cRes.json();
+        setCatalogos(cData);
+
+        if (type === 'ubicacion' && data.id) {
+            setAssignFormData(p => ({ ...p, ubicacion_fisica_id: String(data.id), cat_unidad_id: '', cat_oficina_id: '' }));
+        } else if (type === 'unidad' && data.id) {
+            setAssignFormData(p => ({ ...p, cat_unidad_id: String(data.id), cat_oficina_id: '' }));
+        } else if (type === 'oficina' && data.id) {
+            setAssignFormData(p => ({ ...p, cat_oficina_id: String(data.id) }));
+        } else if (type === 'piso' && data.id) {
+            setAssignFormData(p => ({ ...p, cat_piso_id: String(data.id) }));
+        }
+        setQuickRegister({ isOpen: false, type: '', initialName: '', contextData: {} });
     };
 
     const handleConfirmAssignment = async () => {
@@ -361,9 +404,17 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
             const res = await authFetch(`/api/activos/${assigningAsset.id}/auditoria-asignar`, {
                 method: 'PUT',
                 body: JSON.stringify({
-                    ...assignFormData,
+                    descripcion: assignFormData.descripcion,
+                    cat_auxiliar_id: assignFormData.cat_auxiliar_id,
+                    cat_grupo_contable_id: assignFormData.cat_grupo_contable_id,
+                    origen: assignFormData.origen,
                     usuario_auditado_id: selectedUser.id,
-                    realizado_por: currentUser?.nombre
+                    realizado_por: currentUser?.nombre,
+                    // Ubicación personalizada (si fue elegida)
+                    ubicacion_fisica_id: assignFormData.ubicacion_fisica_id || undefined,
+                    cat_unidad_id: assignFormData.cat_unidad_id || undefined,
+                    cat_oficina_id: assignFormData.cat_oficina_id || undefined,
+                    cat_piso_id: assignFormData.cat_piso_id || undefined,
                 }),
                 headers: {
                     'Content-Type': 'application/json',
@@ -376,14 +427,14 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
                 setSurplusActivos(prev => prev.filter(a => a.id !== assigningAsset.id));
                 setControlledActivos(prev => [...prev, { ...assigningAsset, ...assignFormData, estado_actual: 'Asignado' }]);
                 setAssigningAsset(null);
-                showAlert('Asignado', 'El activo se ha registrado y asignado correctamente.', 'success');
+                showAlert('El activo se ha registrado y asignado correctamente.', { title: 'Asignado', type: 'success' });
                 fetchData(); // Refrescar todo
             } else {
                 const err = await res.json();
-                showAlert('Error', err.message || 'No se pudo completar la asignación.');
+                showAlert(err.message || err.error || 'No se pudo completar la asignación.', { title: 'Error', type: 'error' });
             }
         } catch (e) {
-            showAlert('Error', 'Ocurrió un error en el servidor.');
+            showAlert('Ocurrió un error en el servidor.', { title: 'Error', type: 'error' });
         }
         setLoading(false);
     };
@@ -1065,6 +1116,8 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
 
             <AppDialog {...dialogProps} />
 
+
+
             {/* Modal de Asignación de Sobrante */}
             <Modal
                 isOpen={!!assigningAsset}
@@ -1137,15 +1190,64 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
                             </select>
                         </div>
 
-                        <div className="md:col-span-2 p-3 bg-indigo-50/50 border border-indigo-100/50 rounded-xl overflow-hidden">
-                            <p className="text-[10px] text-indigo-700 font-bold mb-1 flex items-center gap-2">
-                                <MapPin size={12} /> HEREDAR UBICACIÓN ACTUAL:
+                        <div className="md:col-span-2 space-y-3">
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                                <Building2 size={12} /> Ubicación del Activo
                             </p>
-                            <p className="text-[9px] text-indigo-600 font-medium leading-relaxed italic">
-                                Se registrará en: {selectedUser?.edificio || 'N/A'} - {selectedUser?.unidad || 'N/A'} - {selectedUser?.oficina || 'N/A'}
-                                <br />
-                                <span className="text-indigo-500 not-italic">Dirección: {selectedUser?.edificio_direccion || 'No especificada'}</span>
-                            </p>
+
+                            {/* Edificio */}
+                            <div className="space-y-1">
+                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide">Edificio / Dirección</label>
+                                <QuickAddSelect
+                                    options={catalogos.ubicaciones || []}
+                                    value={assignFormData.ubicacion_fisica_id}
+                                    onChange={id => setAssignFormData(p => ({ ...p, ubicacion_fisica_id: id, cat_unidad_id: '', cat_oficina_id: '' }))}
+                                    onRegisterRequest={val => setQuickRegister({ isOpen: true, type: 'ubicacion', initialName: val, contextData: {} })}
+                                    placeholder="Seleccionar edificio..."
+                                    labelField="nombre"
+                                />
+                            </div>
+
+                            {/* Unidad */}
+                            <div className="space-y-1">
+                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide">Unidad / Dirección</label>
+                                <QuickAddSelect
+                                    options={(catalogos.unidades || []).filter(u => !assignFormData.ubicacion_fisica_id || u.ubicacion_fisica_id === Number(assignFormData.ubicacion_fisica_id))}
+                                    value={assignFormData.cat_unidad_id}
+                                    onChange={id => setAssignFormData(p => ({ ...p, cat_unidad_id: id, cat_oficina_id: '' }))}
+                                    onRegisterRequest={val => setQuickRegister({ isOpen: true, type: 'unidad', initialName: val, contextData: { ubicacion_fisica_id: assignFormData.ubicacion_fisica_id } })}
+                                    placeholder="Seleccionar unidad..."
+                                    disabled={!assignFormData.ubicacion_fisica_id}
+                                    labelField="nombre"
+                                />
+                            </div>
+
+                            {/* Oficina + Piso */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide">Oficina</label>
+                                    <QuickAddSelect
+                                        options={(catalogos.oficinas || []).filter(o => !assignFormData.cat_unidad_id || o.unidad_id === Number(assignFormData.cat_unidad_id))}
+                                        value={assignFormData.cat_oficina_id}
+                                        onChange={id => setAssignFormData(p => ({ ...p, cat_oficina_id: id }))}
+                                        onRegisterRequest={val => setQuickRegister({ isOpen: true, type: 'oficina', initialName: val, contextData: { unidad_id: assignFormData.cat_unidad_id } })}
+                                        placeholder="Seleccionar oficina..."
+                                        disabled={!assignFormData.cat_unidad_id}
+                                        labelField="nombre"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide">Piso</label>
+                                    <QuickAddSelect
+                                        options={catalogos.pisos || []}
+                                        value={assignFormData.cat_piso_id}
+                                        onChange={id => setAssignFormData(p => ({ ...p, cat_piso_id: id }))}
+                                        onRegisterRequest={val => setQuickRegister({ isOpen: true, type: 'piso', initialName: val, contextData: {} })}
+                                        placeholder="Piso..."
+                                        labelField="numero"
+                                    />
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -1165,6 +1267,17 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
                     </div>
                 </div>
             </Modal>
+
+            {/* Modal de Registro Rápido de Ubicaciones */}
+            <QuickRegisterModal
+                isOpen={quickRegister.isOpen}
+                onClose={() => setQuickRegister({ isOpen: false, type: '', initialName: '', contextData: {} })}
+                type={quickRegister.type}
+                initialName={quickRegister.initialName}
+                contextData={quickRegister.contextData}
+                catalogos={catalogos}
+                onSave={handleQuickSaveUbicacion}
+            />
         </div>
     );
 };
