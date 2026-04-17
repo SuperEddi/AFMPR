@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Search, Edit2, UserPlus, X, Users, MapPin, Briefcase, Fingerprint, Building, Layers } from 'lucide-react';
 import { AppDialog, useDialog } from '../components/AppDialog';
+import QuickAddSelect from '../components/QuickAddSelect';
+import QuickRegisterModal from '../components/QuickRegisterModal';
 
 const INST_CONFIG = {
     TIERRAS: { pill: 'bg-emerald-600 text-white', border: 'border-l-4 border-l-emerald-400', rowBg: '' },
@@ -29,6 +31,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser, institution }) => {
     const [formData, setFormData] = useState({
         nombre_completo: '', ci: '', cargo: '', ubicacion_fisica_id: '', cat_unidad_id: '', cat_piso_id: '', oficinas_ids: []
     });
+    const [quickRegister, setQuickRegister] = useState({ isOpen: false, type: '', initialName: '', contextData: {} });
     const { showAlert, dialogProps } = useDialog();
 
     const fetchCatalogos = useCallback(async () => {
@@ -90,6 +93,23 @@ const UsuariosView = ({ authFetch = fetch, currentUser, institution }) => {
                 return { ...p, oficinas_ids: [...current, officeId] };
             }
         });
+    };
+
+    const handleQuickSave = async (type, data) => {
+        await fetchCatalogos(); // Refrescar catálogos para ver el nuevo item
+        if (type === 'ubicacion' && data.id) {
+            setFormData(prev => ({ ...prev, ubicacion_fisica_id: data.id, cat_unidad_id: '', oficinas_ids: [] }));
+        } else if (type === 'piso' && data.id) {
+            setFormData(prev => ({ ...prev, cat_piso_id: data.id }));
+        } else if (type === 'unidad' && data.id) {
+            setFormData(prev => ({ ...prev, cat_unidad_id: data.id, oficinas_ids: [] }));
+        } else if (type === 'oficina' && data.id) {
+            setFormData(prev => {
+                const arr = prev.oficinas_ids || [];
+                if (!arr.includes(data.id)) return { ...prev, oficinas_ids: [...arr, data.id] };
+                return prev;
+            });
+        }
     };
 
     const openModal = (user = null) => {
@@ -370,15 +390,14 @@ const UsuariosView = ({ authFetch = fetch, currentUser, institution }) => {
                                     <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
                                         <MapPin size={11} /> Edificio / Ubicación Física
                                     </label>
-                                    <select name="ubicacion_fisica_id"
-                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
-                                        value={formData.ubicacion_fisica_id || ''} onChange={handleEdificioChange}
-                                    >
-                                        <option value="">Seleccione Edificio...</option>
-                                        {(catalogos.ubicaciones || []).map(ub => (
-                                            <option key={ub.id} value={ub.id}>{ub.nombre}</option>
-                                        ))}
-                                    </select>
+                                    <QuickAddSelect
+                                        options={catalogos.ubicaciones || []}
+                                        value={formData.ubicacion_fisica_id}
+                                        onChange={id => handleEdificioChange({ target: { name: 'ubicacion_fisica_id', value: id } })}
+                                        onRegisterRequest={val => setQuickRegister({ isOpen: true, type: 'ubicacion', initialName: val, contextData: {} })}
+                                        placeholder="Seleccionar Edificio..."
+                                        labelField="nombre"
+                                    />
                                 </div>
 
                                 {/* Piso */}
@@ -386,15 +405,14 @@ const UsuariosView = ({ authFetch = fetch, currentUser, institution }) => {
                                     <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
                                         <Layers size={11} /> Piso
                                     </label>
-                                    <select name="cat_piso_id"
-                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
-                                        value={formData.cat_piso_id || ''} onChange={handleInputChange}
-                                    >
-                                        <option value="">Seleccione Piso...</option>
-                                        {(catalogos.pisos || []).map(p => (
-                                            <option key={p.id} value={p.id}>{p.numero}</option>
-                                        ))}
-                                    </select>
+                                    <QuickAddSelect
+                                        options={catalogos.pisos || []}
+                                        value={formData.cat_piso_id}
+                                        onChange={id => setFormData(p => ({ ...p, cat_piso_id: id }))}
+                                        onRegisterRequest={val => setQuickRegister({ isOpen: true, type: 'piso', initialName: val, contextData: {} })}
+                                        placeholder="Seleccione Piso..."
+                                        labelField="numero"
+                                    />
                                 </div>
 
                                 {/* Unidad */}
@@ -402,15 +420,15 @@ const UsuariosView = ({ authFetch = fetch, currentUser, institution }) => {
                                     <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">
                                         <Building size={11} /> Unidad (Catálogo)
                                     </label>
-                                    <select name="cat_unidad_id" required
-                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
-                                        value={formData.cat_unidad_id || ''} onChange={handleInputChange}
-                                    >
-                                        <option value="">Seleccione Unidad...</option>
-                                        {(catalogos.unidades || [])
-                                            .filter(u => !formData.ubicacion_fisica_id || u.ubicacion_fisica_id === Number(formData.ubicacion_fisica_id))
-                                            .map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                                    </select>
+                                    <QuickAddSelect
+                                        options={(catalogos.unidades || []).filter(u => !formData.ubicacion_fisica_id || u.ubicacion_fisica_id === Number(formData.ubicacion_fisica_id))}
+                                        value={formData.cat_unidad_id}
+                                        onChange={id => setFormData(p => ({ ...p, cat_unidad_id: id }))}
+                                        onRegisterRequest={val => setQuickRegister({ isOpen: true, type: 'unidad', initialName: val, contextData: { ubicacion_fisica_id: formData.ubicacion_fisica_id } })}
+                                        placeholder="Seleccione Unidad..."
+                                        disabled={!formData.ubicacion_fisica_id}
+                                        labelField="nombre"
+                                    />
                                 </div>
 
                                 <div>
@@ -434,7 +452,18 @@ const UsuariosView = ({ authFetch = fetch, currentUser, institution }) => {
                                         }
                                         {catalogos.oficinas.length === 0 && <div className="text-center text-[10px] py-4 text-slate-400">No hay oficinas disponibles</div>}
                                     </div>
-                                    <p className="text-[9px] text-slate-400 mt-1 italic leading-tight">* Solo se muestran oficinas de la unidad seleccionada (o todas si no hay filtro).</p>
+                                    <div className="flex items-center justify-between mt-1.5">
+                                        <p className="text-[9px] text-slate-400 italic leading-tight">* Solo se muestran oficinas de la unidad seleccionada.</p>
+                                        {formData.cat_unidad_id && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setQuickRegister({ isOpen: true, type: 'oficina', initialName: '', contextData: { unidad_id: formData.cat_unidad_id } })}
+                                                className="text-[9px] font-semibold text-indigo-600 hover:text-indigo-700 uppercase tracking-tight flex items-center gap-1"
+                                            >
+                                                <Users size={10} /> + Registrar Nueva Oficina
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="flex gap-2 pt-2">
@@ -453,6 +482,16 @@ const UsuariosView = ({ authFetch = fetch, currentUser, institution }) => {
                 )}
             </div>
             <AppDialog {...dialogProps} />
+
+            <QuickRegisterModal
+                isOpen={quickRegister.isOpen}
+                onClose={() => setQuickRegister({ isOpen: false, type: '', initialName: '', contextData: {} })}
+                type={quickRegister.type}
+                initialName={quickRegister.initialName}
+                contextData={quickRegister.contextData}
+                catalogos={catalogos}
+                onSave={handleQuickSave}
+            />
         </>
     );
 };
