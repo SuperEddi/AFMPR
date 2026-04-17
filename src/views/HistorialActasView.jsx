@@ -149,7 +149,7 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                         ...assetData,
                         ubicacion_fisica_id: movingAssetsParams.ubicacion_fisica_id,
                         cat_unidad_id: movingAssetsParams.cat_unidad_id,
-                        cat_oficina_id: movingAssetsParams.oficina_id,
+                        cat_oficina_id: movingAssetsParams.cat_oficina_id,
                         cat_piso_id: movingAssetsParams.cat_piso_id,
                         registrado_por: currentUser?.nombre
                     })
@@ -161,6 +161,12 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
 
             if (allOk) {
                 await Promise.all([fetchHistorial(true), fetchActas(), fetchAllActivos()]);
+
+                // Si movemos todo a una nueva ubicación, intentamos actualizar el key para no perder la vista
+                const newKey = `${movingAssetsParams.ubicacion_fisica_id || ''}|${movingAssetsParams.cat_unidad_id || ''}|${movingAssetsParams.cat_oficina_id || ''}|${movingAssetsParams.cat_piso_id || ''}`;
+                // Sin embargo, como el key usa nombres en el agrupado del front, es mejor limpiar y dejar que el memo actúe
+                // O mejor aún, si el antiguo key ya no existe, el memo devolverá null y volverá a la lista, lo cual es seguro.
+
                 setMovingAssetsParams(null);
                 setSelectedAssets([]);
                 await showAlert('Movimientos masivos guardados con éxito.', { type: 'success' });
@@ -747,7 +753,9 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                                                                 }}>
                                                                     <MapPin size={16} className="text-slate-400" />
                                                                     <div>
-                                                                        <div className="text-xs font-bold text-slate-700">{u.oficina} (Piso {u.piso})</div>
+                                                                        <div className="text-xs font-bold text-slate-700">
+                                                                            {u.oficina} (Piso {String(u.piso || '').toUpperCase().replace('PISO', '').trim()})
+                                                                        </div>
                                                                         <div className="text-[10px] text-slate-400 font-semibold uppercase">{u.unidad}</div>
                                                                     </div>
                                                                 </div>
@@ -803,7 +811,9 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                                     <div>
                                         <h3 className="font-black text-slate-800 text-sm sm:text-lg uppercase tracking-tight">Detalle de Activos Asignados</h3>
                                         <div className="flex flex-wrap items-center gap-2 mt-1">
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{activeViewData?.ubicacion?.oficina}</span>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                {activeViewData?.ubicacion?.oficina} (Piso {String(activeViewData?.ubicacion?.piso || '').toUpperCase().replace('PISO', '').trim()})
+                                            </span>
                                             {activeViewData?.ubicacion?.institucion && (
                                                 <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter ${getInstitutionStyle(activeViewData.ubicacion?.institucion)}`}>
                                                     {activeViewData.ubicacion?.institucion}
@@ -820,7 +830,7 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                                             onClick={() => setMovingAssetsParams({
                                                 ubicacion_fisica_id: '',
                                                 cat_unidad_id: '',
-                                                oficina_id: '',
+                                                cat_oficina_id: '',
                                                 cat_piso_id: ''
                                             })}
                                             className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
@@ -1044,11 +1054,11 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Unidad Destino</label>
-                                        <QuickAddSelect options={catalogos.unidades.filter(u => !movingAssetsParams.ubicacion_fisica_id || u.ubicacion_fisica_id == movingAssetsParams.ubicacion_fisica_id)} labelField="nombre" placeholder="Unidad..." value={movingAssetsParams.cat_unidad_id || ''} onChange={id => setMovingAssetsParams({ ...movingAssetsParams, cat_unidad_id: id, oficina_id: '' })} />
+                                        <QuickAddSelect options={catalogos.unidades.filter(u => !movingAssetsParams.ubicacion_fisica_id || u.ubicacion_fisica_id == movingAssetsParams.ubicacion_fisica_id)} labelField="nombre" placeholder="Unidad..." value={movingAssetsParams.cat_unidad_id || ''} onChange={id => setMovingAssetsParams({ ...movingAssetsParams, cat_unidad_id: id, cat_oficina_id: '' })} />
                                     </div>
                                     <div>
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Oficina Destino</label>
-                                        <QuickAddSelect options={catalogos.oficinas.filter(o => !movingAssetsParams.cat_unidad_id || o.unidad_id == movingAssetsParams.cat_unidad_id)} labelField="nombre" placeholder="Oficina..." value={movingAssetsParams.oficina_id || ''} onChange={id => setMovingAssetsParams({ ...movingAssetsParams, oficina_id: id })} />
+                                        <QuickAddSelect options={catalogos.oficinas.filter(o => !movingAssetsParams.cat_unidad_id || o.unidad_id == movingAssetsParams.cat_unidad_id)} labelField="nombre" placeholder="Oficina..." value={movingAssetsParams.cat_oficina_id || ''} onChange={id => setMovingAssetsParams({ ...movingAssetsParams, cat_oficina_id: id })} />
                                     </div>
                                 </div>
                             </div>
@@ -1085,11 +1095,11 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Unidad</label>
-                                                <QuickAddSelect options={catalogos.unidades.filter(u => !editingAsset.ubicacion_fisica_id || u.ubicacion_fisica_id == editingAsset.ubicacion_fisica_id)} labelField="nombre" placeholder="Unidad..." value={editingAsset.cat_unidad_id || ''} onChange={id => setEditingAsset({ ...editingAsset, cat_unidad_id: id, oficina_id: '' })} />
+                                                <QuickAddSelect options={catalogos.unidades.filter(u => !editingAsset.ubicacion_fisica_id || u.ubicacion_fisica_id == editingAsset.ubicacion_fisica_id)} labelField="nombre" placeholder="Unidad..." value={editingAsset.cat_unidad_id || ''} onChange={id => setEditingAsset({ ...editingAsset, cat_unidad_id: id, cat_oficina_id: '' })} />
                                             </div>
                                             <div>
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Oficina</label>
-                                                <QuickAddSelect options={catalogos.oficinas.filter(o => !editingAsset.cat_unidad_id || o.unidad_id == editingAsset.cat_unidad_id)} labelField="nombre" placeholder="Oficina..." value={editingAsset.oficina_id || ''} onChange={id => setEditingAsset({ ...editingAsset, oficina_id: id })} />
+                                                <QuickAddSelect options={catalogos.oficinas.filter(o => !editingAsset.cat_unidad_id || o.unidad_id == editingAsset.cat_unidad_id)} labelField="nombre" placeholder="Oficina..." value={editingAsset.cat_oficina_id || ''} onChange={id => setEditingAsset({ ...editingAsset, cat_oficina_id: id })} />
                                             </div>
                                         </div>
                                         <div>

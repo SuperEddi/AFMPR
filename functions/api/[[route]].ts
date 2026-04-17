@@ -815,12 +815,12 @@ app.put('/activos/:id', async (c) => {
 
         await db.prepare(`
             UPDATE activos SET 
-                codigo_activo = ?, descripcion = ?, estado_actual = ?,
+                codigo_activo = ?, descripcion = ?, serie = ?, estado_actual = ?,
                 ubicacion_fisica_id = ?, cat_unidad_id = ?, cat_oficina_id = ?, cat_piso_id = ?,
                 cat_auxiliar_id = ?, cat_grupo_contable_id = ?
             WHERE id = ?
         `).bind(
-            codigo_activo, descripcion, estado_actual,
+            codigo_activo, descripcion, serie || null, estado_actual,
             ubicacion_fisica_id || null, cat_unidad_id || null, cat_oficina_id || null, cat_piso_id || null,
             cat_auxiliar_id || null, cat_grupo_contable_id || null,
             id
@@ -948,8 +948,8 @@ app.get('/activos/agrupados', async (c) => {
 
         const fetchDBAgrupados = async (db: D1Database, instName: string) => {
             const { results } = await db.prepare(`
-                SELECT a.id, a.codigo_activo, a.descripcion, a.estado_actual,
-                       a.ubicacion_fisica_id, a.cat_unidad_id, a.cat_oficina_id, a.cat_piso_id,
+                SELECT a.id, a.codigo_activo, a.descripcion, a.serie, a.estado_actual,
+                       a.ubicacion_fisica_id, a.cat_unidad_id, a.cat_oficina_id, a.cat_piso_id, a.cat_auxiliar_id, a.cat_grupo_contable_id,
                        uf.nombre as a_edificio, cat_au.nombre as a_unidad, cat_ao.nombre as a_oficina, cat_ap.numero as a_piso,
                        (SELECT ac.id FROM detalles_acta da JOIN actas ac ON da.acta_id = ac.id WHERE da.activo_id = a.id AND ac.tipo_acta='Asignación' ORDER BY ac.fecha_emision DESC LIMIT 1) as last_acta_id,
                        (SELECT ac.realizado_por FROM detalles_acta da JOIN actas ac ON da.acta_id = ac.id WHERE da.activo_id = a.id AND ac.tipo_acta='Asignación' ORDER BY ac.fecha_emision DESC LIMIT 1) as realizado_por,
@@ -1045,7 +1045,10 @@ app.get('/activos/agrupados', async (c) => {
                 ubicacion_fisica_id: row.ubicacion_fisica_id,
                 cat_unidad_id: row.cat_unidad_id,
                 cat_oficina_id: row.cat_oficina_id,
-                cat_piso_id: row.cat_piso_id
+                cat_piso_id: row.cat_piso_id,
+                serie: row.serie,
+                cat_auxiliar_id: row.cat_auxiliar_id,
+                cat_grupo_contable_id: row.cat_grupo_contable_id
             });
         }
 
