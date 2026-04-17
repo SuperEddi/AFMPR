@@ -59,7 +59,7 @@ const QuickAddSelect = ({
             </div>
 
             {isOpen && (
-                <div className="absolute z-[200] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <div className="absolute z-[999] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                     <div className="p-2 border-b border-slate-100 bg-slate-50/50">
                         <div className="relative">
                             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />

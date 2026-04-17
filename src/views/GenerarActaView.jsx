@@ -888,7 +888,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                     </div>
                 </div>
 
-                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden min-h-[400px]">
+                <div className="bg-white border border-slate-200 rounded-xl min-h-[400px]">
                     {step === 1 && (
                         <div className="p-4 space-y-4">
                             <div className="flex gap-2 p-1 bg-slate-100 rounded-lg w-fit">
@@ -1077,7 +1077,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                     <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100 space-y-4">
                                         <p className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-2"><MapPin size={12} /> Ubicación del Funcionario (Filtro para Oficinas)</p>
 
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-20">
                                             <div>
                                                 <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">1. Edificio / Ubicación Física</label>
                                                 <QuickAddSelect
@@ -1101,7 +1101,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
                                             <div className="space-y-4">
                                                 <div>
                                                     <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">3. Oficina</label>
@@ -1176,7 +1176,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
 
                     {step === 2 && (
                         <div className="p-4 space-y-4">
-                            <div className={`p-3 rounded-xl ${accentClasses.bgLight} border ${accentClasses.text} border-current opacity-90`}>
+                            <div className={`p-3 rounded-xl ${accentClasses.bgLight} border ${accentClasses.text} border-current opacity-90 relative z-20`}>
                                 <div className="flex items-center justify-between mb-2">
                                     <div className="min-w-0">
                                         <p className="text-[10px] font-semibold uppercase opacity-60">Responsable</p>
@@ -1259,7 +1259,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                             </div>
                             {tipo === 'Asignación' ? (
                                 <div className="space-y-4">
-                                    <div className="flex flex-col gap-3 relative" ref={searchRef}>
+                                    <div className="flex flex-col gap-3 relative z-10" ref={searchRef}>
                                         <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-xl w-fit">
                                             {[
                                                 { id: 'all', label: 'Todo', icon: <Package size={12} /> },
