@@ -209,6 +209,23 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
             const ML = 20, MR = 20, MT = 48, MB = 22;
             const contentW = PW - ML - MR;
 
+            // --- Grouping Logic ---
+            const grouped = {};
+            activosParaImprimir.forEach(a => {
+                const key = `${a.edificio || ''}|${a.unidad || ''}|${a.oficina || ''}|${a.piso || ''}`;
+                if (!grouped[key]) grouped[key] = {
+                    metadata: {
+                        edificio: a.edificio || '',
+                        unidad: a.unidad || '',
+                        oficina: a.oficina || '',
+                        piso: String(a.piso || '').toUpperCase().replace('PISO', '').trim()
+                    },
+                    activos: []
+                };
+                grouped[key].activos.push(a);
+            });
+            const groupList = Object.values(grouped);
+
             // --- LOGO / MEMBRETADO ---
             try {
                 const img = new Image();
@@ -262,61 +279,86 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                     ['FECHA:', fechaStr],
                     ['RESPONSABLE:', persona.nombre_completo.toUpperCase()],
                     ['CI / CARGO:', `${persona.ci} – ${persona.cargo}`],
-                    ['UBICACIÓN:', `${ubicacion.unidad} / ${ubicacion.oficina} (Piso: ${ubicacion.piso})`],
                 ],
                 theme: 'plain',
                 styles: { font: 'helvetica', fontSize: 11, cellPadding: 1.5 },
                 columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 } },
             });
-            y = doc.lastAutoTable.finalY + 6;
+            y = doc.lastAutoTable.finalY + 4;
 
-            autoTable(doc, {
-                startY: y, margin: { left: ML, right: MR, bottom: MB },
-                head: [['CÓDIGO ACTIVO', 'DESCRIPCIÓN / DETALLE DEL BIEN', 'ESTADO']],
-                body: activosParaImprimir.map(a => [
-                    a.codigo_activo || '',
-                    a.descripcion || '',
-                    (a.estado_fisico || 'BUENO').toUpperCase()
-                ]),
-                theme: 'grid',
-                headStyles: { fillColor: [241, 241, 241], textColor: [0, 0, 0], font: 'helvetica', fontStyle: 'bold', fontSize: 10 },
-                bodyStyles: { font: 'helvetica', fontSize: 8 },
-                columnStyles: { 0: { cellWidth: 40 }, 2: { cellWidth: 25, halign: 'center' } },
+            // --- Loop through Locations ---
+            groupList.forEach((group, idx) => {
+                const { metadata, activos } = group;
+
+                // Si no hay suficiente espacio para el header + al menos 1 fila de tabla, saltamos página
+                if (y > PH - 45) { doc.addPage(); y = MT; }
+
+                // Sub-header de ubicación
+                doc.setFillColor(245, 247, 250); doc.rect(ML, y, contentW, 7, 'F');
+                doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(51, 65, 85);
+                doc.text(`UBICACIÓN: ${metadata.unidad} / ${metadata.oficina} (Piso: ${metadata.piso})`, ML + 3, y + 4.5);
+                y += 8;
+
+                autoTable(doc, {
+                    startY: y, margin: { left: ML, right: MR, bottom: MB },
+                    head: [['CÓDIGO ACTIVO', 'DESCRIPCIÓN / DETALLE DEL BIEN', 'ESTADO']],
+                    body: activos.map(a => [
+                        a.codigo_activo || '',
+                        a.descripcion || '',
+                        (a.estado_fisico || 'BUENO').toUpperCase()
+                    ]),
+                    theme: 'grid',
+                    headStyles: { fillColor: [241, 241, 241], textColor: [0, 0, 0], font: 'helvetica', fontStyle: 'bold', fontSize: 9 },
+                    bodyStyles: { font: 'helvetica', fontSize: 8 },
+                    columnStyles: { 0: { cellWidth: 40 }, 2: { cellWidth: 25, halign: 'center' } },
+                });
+
+                y = doc.lastAutoTable.finalY + 6;
             });
-            y = doc.lastAutoTable.finalY + 6;
 
             // Observaciones
-            if (ubicacion.observaciones) {
+            if (ubicacion.observations || ubicacion.observaciones) {
+                const obsText = ubicacion.observations || ubicacion.observaciones;
                 doc.setFontSize(9); doc.setFont('helvetica', 'italic'); doc.setDrawColor(180, 180, 180);
-                const obsLines = doc.splitTextToSize(`OBSERVACIONES: ${ubicacion.observaciones}`, contentW - 8);
-                doc.rect(ML, y, contentW, obsLines.length * 4.5 + 4);
-                doc.text(obsLines, ML + 4, y + 5);
-                y += obsLines.length * 4.5 + 8;
+                const obsLines = doc.splitTextToSize(`OBSERVACIONES: ${obsText}`, contentW - 8);
+                if (y + (obsLines.length * 5) > PH - MB - 30) { doc.addPage(); y = MT; }
+                doc.rect(ML, y, contentW, obsLines.length * 5 + 4);
+                doc.text(obsLines, ML + 4, y + 6);
+                y += obsLines.length * 5 + 10;
             }
 
             // Nota Legal
-            doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
             doc.setDrawColor(197, 160, 89); doc.setLineWidth(1);
-            doc.line(ML, y, ML, y + 14); doc.setLineWidth(0.2);
+            if (y + 15 > PH - MB - 40) { doc.addPage(); y = MT; }
+            doc.line(ML, y, ML, y + 10); doc.setLineWidth(0.2);
             const nota = 'NOTA: En cumplimiento a los Art. 141, 146, 147, 154, 159 y 157 del D.S. 0181 y Ley 1178, se procede con el acto. El custodio no podrá efectuar préstamos o transferencias por cuenta propia.';
             const notaLines = doc.splitTextToSize(nota, contentW - 5);
             doc.text(notaLines, ML + 4, y + 4);
-            y += notaLines.length * 4 + 12;
+            y += notaLines.length * 4 + 10;
 
             // Firmas
-            if (y + 20 > PH - MB) { doc.addPage(); y = MT + 10; } else { y += 6; }
-            const col1X = ML + 5, col2X = ML + contentW - 55;
-            doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.3);
-            doc.line(col1X, y + 15, col1X + 50, y + 15);
-            doc.line(col2X, y + 15, col2X + 50, y + 15);
-            doc.setFontSize(8); doc.text('ENTREGUÉ CONFORME', col1X + 25, y + 19, { align: 'center' });
-            doc.text('RECIBÍ CONFORME', col2X + 25, y + 19, { align: 'center' });
+            if (y + 30 > PH - MB) { doc.addPage(); y = MT + 20; } else { y += 15; }
+            const colW = contentW / 2;
+            doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
+            doc.line(ML + 15, y, ML + colW - 15, y);
+            doc.text('ENTREGUÉ CONFORME', ML + colW / 2, y + 5, { align: 'center' });
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+            doc.text(currentUser?.nombre?.toUpperCase() || 'RESPONSABLE DE ACTIVOS', ML + colW / 2, y + 9, { align: 'center' });
+
+            doc.line(ML + colW + 15, y, ML + 2 * colW - 15, y);
+            doc.text('RECIBÍ CONFORME', ML + colW + colW / 2, y + 5, { align: 'center' });
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+            doc.text(persona.nombre_completo.toUpperCase(), ML + colW + colW / 2, y + 9, { align: 'center' });
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+            doc.text(`CI: ${persona.ci}`, ML + colW + colW / 2, y + 13, { align: 'center' });
 
             drawFooter(doc);
-            const safeNombre = persona.nombre_completo.trim().replace(/\s+/g, '_');
-            doc.save(`Acta_Consolidada_${safeNombre}_${persona.ci}.pdf`);
+            const pdfBlob = doc.output('bloburl');
+            window.open(pdfBlob, '_blank');
         } catch (e) {
-            console.error(e);
+            console.error('Error generando PDF:', e);
+            await showAlert('Error al generar el PDF.', { type: 'error' });
         } finally {
             setPrinting(null);
         }

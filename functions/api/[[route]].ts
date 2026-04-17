@@ -1048,7 +1048,11 @@ app.get('/activos/agrupados', async (c) => {
                 cat_piso_id: row.cat_piso_id,
                 serie: row.serie,
                 cat_auxiliar_id: row.cat_auxiliar_id,
-                cat_grupo_contable_id: row.cat_grupo_contable_id
+                cat_grupo_contable_id: row.cat_grupo_contable_id,
+                unidad: row.a_unidad,
+                oficina: row.a_oficina,
+                piso: row.a_piso,
+                edificio: row.a_edificio
             });
         }
 
