@@ -686,7 +686,7 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                                                                 }}
                                                                 className="text-[9px] font-black bg-emerald-600 text-white px-2 py-1 rounded-lg uppercase tracking-tighter hover:bg-emerald-700 transition-all flex items-center gap-1"
                                                             >
-                                                                <Printer size={10} /> Imprimir {selectedUbicKeys.length} Seleccionadas
+                                                                <Printer size={10} /> Generar Consolidado ({selectedUbicKeys.length})
                                                             </button>
                                                         )}
                                                     </div>
