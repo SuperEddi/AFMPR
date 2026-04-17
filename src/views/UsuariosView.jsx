@@ -272,11 +272,11 @@ const UsuariosView = ({ authFetch = fetch, currentUser, institution }) => {
                                             <div className="font-semibold">{u.cargo || '—'}</div>
                                             <div className="text-[10px] text-slate-400">
                                                 {u.edificio ? <span className="font-semibold text-indigo-500 uppercase">{u.edificio}</span> : ''}
-                                                {u.edificio && u.unidad ? ' · ' : ''}
-                                                {u.unidad || '—'}
+                                                {u.edificio && (u.unidades_atendidas || u.unidad) ? ' · ' : ''}
+                                                <span className="italic">{u.unidades_atendidas || u.unidad || '—'}</span>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-2.5 text-xs text-slate-500 italic max-w-[200px] truncate">
+                                        <td className="px-4 py-2.5 text-xs text-slate-500 italic max-w-[250px] truncate" title={u.oficinas}>
                                             {u.oficinas || '—'}
                                         </td>
                                         <td className="px-4 py-2.5">
@@ -326,7 +326,7 @@ const UsuariosView = ({ authFetch = fetch, currentUser, institution }) => {
                                     <div className="text-[10px] text-slate-500 font-medium">
                                         CI: {u.ci} {u.cargo && `• ${u.cargo}`}
                                     </div>
-                                    {u.unidad && <div className="text-[10px] text-slate-400 truncate">{u.unidad}</div>}
+                                    {u.unidad && <div className="text-[10px] text-slate-400 truncate italic">{u.unidades_atendidas || u.unidad}</div>}
                                 </div>
                                 <button
                                     onClick={() => openModal(u)}

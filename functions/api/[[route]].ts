@@ -313,14 +313,14 @@ app.get('/usuarios', async (c) => {
                        u.cat_unidad_id, u.ubicacion_fisica_id, u.cat_piso_id,
                        un.nombre as unidad, uf.nombre as edificio, uf.direccion as edificio_direccion,
                        ps.numero as piso,
-                       (SELECT uo.oficina_id FROM usuarios_oficinas uo WHERE uo.usuario_id = u.id LIMIT 1) as cat_oficina_id,
-                       (SELECT off.nombre FROM cat_oficinas off WHERE off.id = (SELECT uo2.oficina_id FROM usuarios_oficinas uo2 WHERE uo2.usuario_id = u.id LIMIT 1)) as oficina,
-                       (SELECT GROUP_CONCAT(off.nombre || ' (' || uf2.nombre || ' - ' || COALESCE(uf2.direccion, 'S/D') || ')', ' | ')
-                        FROM usuarios_oficinas uo
-                        JOIN cat_oficinas off ON uo.oficina_id = off.id
-                        JOIN cat_unidades un2 ON off.unidad_id = un2.id
-                        JOIN ubicacion_fisica uf2 ON un2.ubicacion_fisica_id = uf2.id
-                        WHERE uo.usuario_id = u.id) as oficinas_detalle
+                        (SELECT GROUP_CONCAT(off.nombre, ', ') FROM usuarios_oficinas uo JOIN cat_oficinas off ON uo.oficina_id = off.id WHERE uo.usuario_id = u.id) as oficinas,
+                        (SELECT GROUP_CONCAT(DISTINCT un2.nombre, ', ') FROM usuarios_oficinas uo JOIN cat_oficinas off ON uo.oficina_id = off.id JOIN cat_unidades un2 ON off.unidad_id = un2.id WHERE uo.usuario_id = u.id) as unidades_atendidas,
+                        (SELECT GROUP_CONCAT(off.nombre || ' (' || uf2.nombre || ' - ' || COALESCE(uf2.direccion, 'S/D') || ')', ' | ')
+                         FROM usuarios_oficinas uo
+                         JOIN cat_oficinas off ON uo.oficina_id = off.id
+                         JOIN cat_unidades un2 ON off.unidad_id = un2.id
+                         JOIN ubicacion_fisica uf2 ON un2.ubicacion_fisica_id = uf2.id
+                         WHERE uo.usuario_id = u.id) as oficinas_detalle
                 FROM usuarios u
                 LEFT JOIN cat_unidades un ON u.cat_unidad_id = un.id
                 LEFT JOIN ubicacion_fisica uf ON u.ubicacion_fisica_id = uf.id
