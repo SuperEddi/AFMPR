@@ -88,7 +88,6 @@ CREATE TABLE IF NOT EXISTS activos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     codigo_activo TEXT NOT NULL UNIQUE,
     descripcion TEXT NOT NULL,
-    serie TEXT,
     estado_actual TEXT CHECK(estado_actual IN ('Disponible', 'Asignado', 'Mantenimiento')) DEFAULT 'Disponible',
     usuario_actual_id INTEGER,
     ubicacion_fisica_id INTEGER,

@@ -756,7 +756,7 @@ app.post('/activos', async (c) => {
         if (!db) return c.json({ error: 'Selección requerida', message: 'No se puede registrar activos en modo CONSOLIDADO. Seleccione una institución específica (Tierras, Justicia, Presidencia, etc.)' }, 400);
         const data = await c.req.json();
         const {
-            codigo_activo, descripcion, serie, estado_actual,
+            codigo_activo, descripcion, estado_actual,
             ubicacion_fisica_id, cat_unidad_id, cat_oficina_id, cat_piso_id,
             cat_auxiliar_id, cat_grupo_contable_id, registrado_por } = data;
 
@@ -815,24 +815,27 @@ app.put('/activos/:id/liberar', async (c) => {
 
 // Editar activo individual
 app.put('/activos/:id', async (c) => {
-    const id = c.req.param('id');
     try {
-        const db = getDB(c)!;
+        const db = requireMutationDB(c);
+        if (!db) return c.json({ error: 'Selección requerida' }, 400);
+        const id = c.req.param('id');
         const data = await c.req.json();
-        const { codigo_activo, descripcion, serie, estado_actual,
+        const { codigo_activo, descripcion, estado_actual,
             ubicacion_fisica_id, cat_unidad_id, cat_oficina_id, cat_piso_id,
             cat_auxiliar_id, cat_grupo_contable_id } = data;
 
+        const cleanId = (val: any) => (val === '' || val === undefined || val === 'undefined') ? null : val;
+
         await db.prepare(`
             UPDATE activos SET 
-                codigo_activo = ?, descripcion = ?, serie = ?, estado_actual = ?,
+                codigo_activo = ?, descripcion = ?, estado_actual = ?,
                 ubicacion_fisica_id = ?, cat_unidad_id = ?, cat_oficina_id = ?, cat_piso_id = ?,
                 cat_auxiliar_id = ?, cat_grupo_contable_id = ?
             WHERE id = ?
         `).bind(
-            codigo_activo, descripcion, serie || null, estado_actual,
-            ubicacion_fisica_id || null, cat_unidad_id || null, cat_oficina_id || null, cat_piso_id || null,
-            cat_auxiliar_id || null, cat_grupo_contable_id || null,
+            codigo_activo, descripcion, estado_actual,
+            cleanId(ubicacion_fisica_id), cleanId(cat_unidad_id), cleanId(cat_oficina_id), cleanId(cat_piso_id),
+            cleanId(cat_auxiliar_id), cleanId(cat_grupo_contable_id),
             id
         ).run();
         await invalidateConsolidadoCache(c.env.CACHE);
@@ -958,7 +961,7 @@ app.get('/activos/agrupados', async (c) => {
 
         const fetchDBAgrupados = async (db: D1Database, instName: string) => {
             const { results } = await db.prepare(`
-                SELECT a.id, a.codigo_activo, a.descripcion, a.serie, a.estado_actual,
+                SELECT a.id, a.codigo_activo, a.descripcion, a.estado_actual,
                        a.ubicacion_fisica_id, a.cat_unidad_id, a.cat_oficina_id, a.cat_piso_id, a.cat_auxiliar_id, a.cat_grupo_contable_id,
                        uf.nombre as a_edificio, cat_au.nombre as a_unidad, cat_ao.nombre as a_oficina, cat_ap.numero as a_piso,
                        (SELECT ac.id FROM detalles_acta da JOIN actas ac ON da.acta_id = ac.id WHERE da.activo_id = a.id AND ac.tipo_acta='Asignación' ORDER BY ac.fecha_emision DESC LIMIT 1) as last_acta_id,
