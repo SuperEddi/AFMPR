@@ -949,6 +949,7 @@ app.get('/activos/agrupados', async (c) => {
         const fetchDBAgrupados = async (db: D1Database, instName: string) => {
             const { results } = await db.prepare(`
                 SELECT a.id, a.codigo_activo, a.descripcion, a.estado_actual,
+                       a.ubicacion_fisica_id, a.cat_unidad_id, a.cat_oficina_id, a.cat_piso_id,
                        uf.nombre as a_edificio, cat_au.nombre as a_unidad, cat_ao.nombre as a_oficina, cat_ap.numero as a_piso,
                        (SELECT ac.id FROM detalles_acta da JOIN actas ac ON da.acta_id = ac.id WHERE da.activo_id = a.id AND ac.tipo_acta='Asignación' ORDER BY ac.fecha_emision DESC LIMIT 1) as last_acta_id,
                        (SELECT ac.realizado_por FROM detalles_acta da JOIN actas ac ON da.acta_id = ac.id WHERE da.activo_id = a.id AND ac.tipo_acta='Asignación' ORDER BY ac.fecha_emision DESC LIMIT 1) as realizado_por,
@@ -1040,7 +1041,11 @@ app.get('/activos/agrupados', async (c) => {
                 estado_fisico: row.estado_fisico || 'Bueno',
                 last_acta_id: row.last_acta_id,
                 realizado_por: row.realizado_por,
-                institucion: row.institucion
+                institucion: row.institucion,
+                ubicacion_fisica_id: row.ubicacion_fisica_id,
+                cat_unidad_id: row.cat_unidad_id,
+                cat_oficina_id: row.cat_oficina_id,
+                cat_piso_id: row.cat_piso_id
             });
         }
 

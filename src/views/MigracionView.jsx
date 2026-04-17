@@ -41,10 +41,10 @@ const TABLES = [
         color: 'text-blue-600',
         bg: 'bg-blue-50',
         border: 'border-blue-300',
-        fields: ['nombre_completo', 'ci', 'cargo', 'edificio', 'unidad'],
+        fields: ['nombre_completo', 'ci', 'cargo', 'edificio', 'unidad', 'oficina', 'piso'],
         sample: [
-            ['Juan Perez Quispe', '1234567', 'Técnico', 'Casa Grande del Pueblo', 'Sistemas'],
-            ['Ana Lopez Mamani', '7654321', 'Secretaria', 'Edificio Anexo', 'Administración'],
+            ['Juan Perez Quispe', '1234567', 'Técnico', 'Casa Grande del Pueblo', 'Sistemas', 'Oficina 1', 'Piso 1'],
+            ['Ana Lopez Mamani', '7654321', 'Secretaria', 'Edificio Anexo', 'Administración', 'Oficina 2', 'Piso 2'],
         ]
     },
     {

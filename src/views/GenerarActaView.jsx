@@ -69,7 +69,7 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
                     </button>
                 </div>
             </div>
-            <div className="divide-y divide-slate-100 border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+            <div className="divide-y divide-slate-100 border border-slate-100 rounded-2xl shadow-sm">
                 {activosList.filter(a =>
                     a.codigo_activo?.toLowerCase().includes(filtroActivos.toLowerCase()) ||
                     a.descripcion?.toLowerCase().includes(filtroActivos.toLowerCase())
@@ -101,7 +101,10 @@ const DevolucionConReasignacion = ({ activosList, activosSeleccionados, toggleAc
                                         <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
                                             <div>
                                                 <p className="text-[10px] font-semibold text-emerald-700 uppercase">{asignado.nombre_completo}</p>
-                                                <p className="text-[9px] text-emerald-500">CI: {asignado.ci} · {asignado.cargo}</p>
+                                                <p className="text-[9px] text-emerald-500 font-medium tracking-tight">CI: {asignado.ci} · {asignado.cargo}</p>
+                                                <p className="text-[8px] text-emerald-600/70 font-bold uppercase mt-0.5 flex items-center gap-1">
+                                                    <Building2 size={8} /> {asignado.edificio || 'Edificio S/D'} · {asignado.oficina || 'Oficina S/D'}
+                                                </p>
                                             </div>
                                             <button onClick={() => { setReasignacion(a.id, null); setBusquedas(p => ({ ...p, [a.id]: '' })); }} className="text-emerald-400 hover:text-red-500">
                                                 <XIcon size={14} />
@@ -261,7 +264,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
     const [activosSeleccionados, setActivosSeleccionados] = useState([]);
     const [observaciones, setObservaciones] = useState('');
     const [loading, setLoading] = useState(false);
-    const { showAlert, dialogProps } = useDialog();
+    const { showAlert, showConfirm, dialogProps } = useDialog();
     const [lastActaId, setLastActaId] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [userSearch, setUserSearch] = useState('');
@@ -296,6 +299,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
     const [searchMode, setSearchMode] = useState('all'); // 'all', 'codigo', 'descripcion'
     const [showAppendModal, setShowAppendModal] = useState(false);
     const [ultimoActa, setUltimoActa] = useState(null);
+    const [actasDisponiblesUser, setActasDisponiblesUser] = useState([]);
     const [printMode, setPrintMode] = useState('all'); // 'all', 'latest'
     const [newAssetIds, setNewAssetIds] = useState([]);
     // ─── Devolución: selección por responsable + ubicación ─────────────────
@@ -427,7 +431,22 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                 const res = await authFetch('/api/usuarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 const data = await res.json();
                 if (data.success) {
-                    setSelectedUser(data.user);
+                    // Enriquecer el usuario con nombres de catálogos para visualización inmediata en el header
+                    const u = data.user;
+                    const getNombre = (cat, id, field = 'nombre') => {
+                        if (!id || !cat) return '';
+                        const found = cat.find(x => String(x.id) === String(id));
+                        return found ? found[field] : '';
+                    };
+
+                    const enriched = {
+                        ...u,
+                        edificio: getNombre(catalogos.ubicaciones, u.ubicacion_fisica_id),
+                        unidad: getNombre(catalogos.unidades, u.cat_unidad_id),
+                        oficina: getNombre(catalogos.oficinas, u.oficinas_ids?.[0] || u.cat_oficina_id),
+                        piso: getNombre(catalogos.pisos, u.cat_piso_id, 'numero')
+                    };
+                    setSelectedUser(enriched);
                     setStep(2);
                     fetchUsuarios();
                 } else {
@@ -447,15 +466,16 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
         if (!activosSeleccionados.length) return;
         if (tipo === 'Devolución') { setShowConfirmModal(true); return; }
 
-        // Buscar acta reciente de asignación para este usuario
+        // Buscar actas de asignación para este usuario
         try {
             setLoading(true);
             const res = await authFetch(`/api/actas?usuario_id=${selectedUser.id}&tipo=Asignación`);
             const actasUser = await res.json();
-            // Tomar la más reciente (validando que sea un array)
-            const candidate = Array.isArray(actasUser) ? actasUser.sort((a, b) => b.id - a.id)[0] : null;
-            if (candidate) {
-                setUltimoActa(candidate);
+            // Tomar todas las actas, ordenarlas por más reciente y setear la primera por defecto
+            const validActas = Array.isArray(actasUser) ? actasUser.sort((a, b) => b.id - a.id) : [];
+            if (validActas.length > 0) {
+                setActasDisponiblesUser(validActas);
+                setUltimoActa(validActas[0]);
                 setShowAppendModal(true);
             } else {
                 await saveActa([{ tipo_acta: 'Asignación', usuario_id: selectedUser.id, activos: activosSeleccionados }]);
@@ -469,6 +489,22 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
     };
 
     const handleConfirmAppend = async (useExisting) => {
+        if (useExisting) {
+            // Validar diferencias de ubicación entre el usuario seleccionado y el acta original
+            const mismatch =
+                String(selectedUser.ubicacion_fisica_id || '') !== String(ultimoActa.ubicacion_fisica_id || '') ||
+                String(selectedUser.cat_unidad_id || '') !== String(ultimoActa.cat_unidad_id || '') ||
+                String(selectedUser.cat_oficina_id || '') !== String(ultimoActa.cat_oficina_id || '') ||
+                String(selectedUser.cat_piso_id || '') !== String(ultimoActa.cat_piso_id || '');
+
+            if (mismatch) {
+                const ok = await showConfirm(
+                    'La ubicación actual del funcionario no coincide con la ubicación registrada en el acta original. ¿Seguro que desea agregar estos activos manteniendo esta diferencia?',
+                    { title: 'Diferencia de Ubicación', type: 'warning', confirmText: 'Sí, Aumentar', cancelText: 'No, Cancelar' }
+                );
+                if (!ok) return;
+            }
+        }
         setShowAppendModal(false);
         const appendId = useExisting ? ultimoActa.id : null;
         setNewAssetIds(activosSeleccionados.map(a => a.id));
@@ -487,10 +523,10 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                         usuario_id: item.usuario_id,
                         activos_seleccionados: item.activos,
                         observaciones,
-                        ubicacion_fisica_id: selectedUser?.ubicacion_fisica_id,
-                        cat_unidad_id: selectedUser?.cat_unidad_id,
-                        cat_oficina_id: selectedUser?.cat_oficina_id,
-                        cat_piso_id: selectedUser?.cat_piso_id,
+                        ubicacion_fisica_id: item.ubicacion_fisica_id || selectedUser?.ubicacion_fisica_id,
+                        cat_unidad_id: item.cat_unidad_id || selectedUser?.cat_unidad_id,
+                        cat_oficina_id: item.cat_oficina_id || selectedUser?.cat_oficina_id,
+                        cat_piso_id: item.cat_piso_id || selectedUser?.cat_piso_id,
                         appendToActaId: item.appendId,
                         realizado_por: currentUser?.nombre,
                         institucion: institution || 'tierras'
@@ -592,7 +628,16 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
         const batch = [{ tipo_acta: 'Devolución', usuario_id: selectedUser.id, activos: activosSeleccionados }];
         const grupos = {};
         Object.entries(reasignaciones).forEach(([aId, u]) => {
-            if (!grupos[u.id]) grupos[u.id] = { usuario_id: u.id, activos: [] };
+            if (!grupos[u.id]) {
+                grupos[u.id] = {
+                    usuario_id: u.id,
+                    activos: [],
+                    ubicacion_fisica_id: u.ubicacion_fisica_id,
+                    cat_unidad_id: u.cat_unidad_id,
+                    cat_oficina_id: u.cat_oficina_id,
+                    cat_piso_id: u.cat_piso_id
+                };
+            }
             const a = activosSeleccionados.find(x => String(x.id) === String(aId));
             if (a) grupos[u.id].activos.push(a);
         });
@@ -790,9 +835,25 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
             const isNotSelected = !activosSeleccionados.find(s => s.id === a.id);
             if (!isNotSelected) return false;
 
-            const term = searchTerm.toLowerCase();
-            const matchesCode = a.codigo_activo?.toLowerCase().includes(term);
-            const matchesDesc = a.descripcion?.toLowerCase().includes(term);
+            const term = searchTerm.toLowerCase().trim();
+            let matchesCode = false;
+            let matchesDesc = false;
+
+            if (term.includes('*')) {
+                const escaped = term.split('*').map(s => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*');
+                try {
+                    const regex = new RegExp(`^${escaped}$`, 'i');
+                    matchesCode = regex.test(a.codigo_activo || '');
+                    matchesDesc = regex.test(a.descripcion || '');
+                } catch {
+                    matchesCode = (a.codigo_activo || '').toLowerCase().includes(term);
+                    matchesDesc = (a.descripcion || '').toLowerCase().includes(term);
+                }
+            } else {
+                // Comportamiento Excel: Código busca por prefijo (startsWith), Descripción busca contenido (includes)
+                matchesCode = (a.codigo_activo || '').toLowerCase().startsWith(term);
+                matchesDesc = (a.descripcion || '').toLowerCase().includes(term);
+            }
 
             if (searchMode === 'codigo') return matchesCode;
             if (searchMode === 'descripcion') return matchesDesc;
@@ -800,7 +861,7 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
         }).slice(0, 8)
         : [];
 
-    const resetForm = () => { setStep(1); setSelectedUser(null); setActivosSeleccionados([]); setObservaciones(''); setIsNewUser(false); setNewUserData({ nombre_completo: '', ci: '', cargo: '', cat_unidad_id: '', oficinas_ids: [] }); setSearchTerm(''); setUserSearch(''); setReasignaciones({}); setPrintedActas([]); setBarcodeSearch(''); setSelectedUbicDevolucion(null); setDevUserSearch(''); };
+    const resetForm = () => { setStep(1); setSelectedUser(null); setActivosSeleccionados([]); setObservaciones(''); setIsNewUser(false); setNewUserData({ nombre_completo: '', ci: '', cargo: '', ubicacion_fisica_id: '', cat_unidad_id: '', cat_oficina_id: '', cat_piso_id: '', oficinas_ids: [] }); setSearchTerm(''); setUserSearch(''); setReasignaciones({}); setPrintedActas([]); setBarcodeSearch(''); setSelectedUbicDevolucion(null); setDevUserSearch(''); };
 
     const setReasignacion = (activoId, usuario) => {
         setReasignaciones(prev => { const n = { ...prev }; if (usuario) n[activoId] = usuario; else delete n[activoId]; return n; });
@@ -1341,11 +1402,25 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                 <Modal isOpen={showAppendModal} onClose={() => setShowAppendModal(false)} title="¿Cómo desea proceder?" size="md">
                     <div className="p-6 space-y-6">
                         <div className="flex items-center gap-4 p-4 bg-blue-50 border border-blue-100 rounded-2xl">
-                            <div className="w-12 h-12 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20"><FileText size={24} /></div>
-                            <div>
-                                <p className="text-[10px] font-semibold text-blue-600 uppercase tracking-widest">Acta Reciente Encontrada</p>
-                                <p className="text-xl font-semibold text-slate-900">Acta # {String(ultimoActa?.id).padStart(6, '0')}</p>
-                                <p className="text-[10px] font-semibold text-slate-500 uppercase italic">Emitida el: {new Date(ultimoActa?.fecha_emision).toLocaleDateString()}</p>
+                            <div className="w-12 h-12 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20 shrink-0"><FileText size={24} /></div>
+                            <div className="flex-1">
+                                <p className="text-[10px] font-semibold text-blue-600 uppercase tracking-widest mb-1">Acta a Aumentar</p>
+                                <select
+                                    className="w-full py-1.5 px-2 bg-white border border-blue-200 rounded-lg text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                                    value={ultimoActa?.id || ''}
+                                    onChange={(e) => setUltimoActa(actasDisponiblesUser.find(x => String(x.id) === e.target.value))}
+                                >
+                                    {actasDisponiblesUser.map(a => {
+                                        const loc = a.ubicacion_fisica || a.unidad || a.oficina
+                                            ? ` - ${[a.ubicacion_fisica, a.unidad, a.oficina].filter(Boolean).join(' / ')}`
+                                            : '';
+                                        return (
+                                            <option key={a.id} value={a.id}>
+                                                Acta #{String(a.id).padStart(6, '0')} - {new Date(a.fecha_emision || a.fecha || Date.now()).toLocaleDateString()}{loc}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
                             </div>
                         </div>
 

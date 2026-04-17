@@ -69,8 +69,8 @@ const QuickRegisterModal = ({
 
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[300] flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-200 overflow-hidden">
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-200">
+                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-2xl">
                     <div className="flex items-center gap-2">
                         {getIcon()}
                         <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wider">{getTitle()}</h3>

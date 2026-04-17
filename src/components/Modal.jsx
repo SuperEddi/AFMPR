@@ -35,9 +35,9 @@ const Modal = ({ isOpen, onClose, title, children, footer, size = 'md' }) => {
             />
 
             {/* Panel */}
-            <div className={`relative w-full ${maxWidths[size]} bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200`}>
+            <div className={`relative w-full ${maxWidths[size]} bg-white rounded-2xl shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200`}>
                 {/* Borde superior dorado */}
-                <div className="h-1.5 w-full flex-shrink-0" style={{ background: '#C5A059' }} />
+                <div className="h-1.5 w-full flex-shrink-0 rounded-t-2xl" style={{ background: '#C5A059' }} />
 
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-3 border-b border-slate-100">
@@ -62,7 +62,7 @@ const Modal = ({ isOpen, onClose, title, children, footer, size = 'md' }) => {
 
                 {/* Footer */}
                 {footer && (
-                    <div className="px-4 sm:px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-end gap-2 flex-wrap">
+                    <div className="px-4 sm:px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-end gap-2 flex-wrap rounded-b-2xl">
                         {footer}
                     </div>
                 )}

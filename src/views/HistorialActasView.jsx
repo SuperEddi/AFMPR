@@ -984,9 +984,35 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                                 <div className="space-y-4">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Descripción</label>
                                     <textarea className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs font-bold outline-none" rows="3" value={editingAsset.descripcion} onChange={e => setEditingAsset({ ...editingAsset, descripcion: e.target.value })} />
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <QuickAddSelect options={catalogos.pisos} labelField="numero" placeholder="Piso..." value={editingAsset.cat_piso_id} onChange={id => setEditingAsset({ ...editingAsset, cat_piso_id: id })} />
-                                        <select className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none" value={editingAsset.estado_fisico} onChange={e => setEditingAsset({ ...editingAsset, estado_fisico: e.target.value })}><option value="Bueno">BUENO</option><option value="Regular">REGULAR</option><option value="Malo">MALO</option></select>
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Edificio</label>
+                                                <QuickAddSelect options={catalogos.ubicaciones} labelField="nombre" placeholder="Edificio..." value={editingAsset.ubicacion_fisica_id || ''} onChange={id => setEditingAsset({ ...editingAsset, ubicacion_fisica_id: id, cat_unidad_id: '', oficina_id: '' })} />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Piso</label>
+                                                <QuickAddSelect options={catalogos.pisos} labelField="numero" placeholder="Piso..." value={editingAsset.cat_piso_id || ''} onChange={id => setEditingAsset({ ...editingAsset, cat_piso_id: id })} />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Unidad</label>
+                                                <QuickAddSelect options={catalogos.unidades.filter(u => !editingAsset.ubicacion_fisica_id || u.ubicacion_fisica_id == editingAsset.ubicacion_fisica_id)} labelField="nombre" placeholder="Unidad..." value={editingAsset.cat_unidad_id || ''} onChange={id => setEditingAsset({ ...editingAsset, cat_unidad_id: id, oficina_id: '' })} />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Oficina</label>
+                                                <QuickAddSelect options={catalogos.oficinas.filter(o => !editingAsset.cat_unidad_id || o.unidad_id == editingAsset.cat_unidad_id)} labelField="nombre" placeholder="Oficina..." value={editingAsset.oficina_id || ''} onChange={id => setEditingAsset({ ...editingAsset, oficina_id: id })} />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Estado Físico</label>
+                                            <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none" value={editingAsset.estado_fisico || 'Bueno'} onChange={e => setEditingAsset({ ...editingAsset, estado_fisico: e.target.value })}>
+                                                <option value="Bueno">BUENO</option>
+                                                <option value="Regular">REGULAR</option>
+                                                <option value="Malo">MALO</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
                                 <button type="submit" disabled={savingAsset} className="w-full py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center justify-center gap-3">{savingAsset ? <RefreshCw className="animate-spin" /> : <CheckCircle />} GUARDAR CAMBIOS</button>
