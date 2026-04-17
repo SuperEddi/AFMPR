@@ -592,7 +592,6 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
         autoTable(doc, {
             startY: y, margin: { left: ML, right: MR, bottom: MB }, tableWidth: contentW,
             body: [
-                ['NRO. ACTA:', `#${String(dataRes.id || '000000').padStart(6, '0')}`],
                 ['FECHA:', fechaStr],
                 ['RESPONSABLE:', nombre.toUpperCase()],
                 ['CI / CARGO:', `${ci} – ${cargo}`],
