@@ -102,6 +102,7 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
         if (!persona) return null;
         const uKey = selectedUbicKey;
         const ub = persona.ubicaciones.find(u => `${u.edificio || ''}|${u.unidad || ''}|${u.oficina || ''}|${u.piso || ''}` === uKey);
+        if (!ub) return null;
         return { persona, ubicacion: ub };
     }, [agrupados, selectedCI, selectedUbicKey]);
 
@@ -802,10 +803,10 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                                     <div>
                                         <h3 className="font-black text-slate-800 text-sm sm:text-lg uppercase tracking-tight">Detalle de Activos Asignados</h3>
                                         <div className="flex flex-wrap items-center gap-2 mt-1">
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{activeViewData.ubicacion.oficina}</span>
-                                            {activeViewData.ubicacion.institucion && (
-                                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter ${getInstitutionStyle(activeViewData.ubicacion.institucion)}`}>
-                                                    {activeViewData.ubicacion.institucion}
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{activeViewData?.ubicacion?.oficina}</span>
+                                            {activeViewData?.ubicacion?.institucion && (
+                                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-tighter ${getInstitutionStyle(activeViewData.ubicacion?.institucion)}`}>
+                                                    {activeViewData.ubicacion?.institucion}
                                                 </span>
                                             )}
                                             <span className="text-slate-200">·</span>
@@ -830,7 +831,7 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                                     <button
                                         onClick={() => {
                                             if (selectedAssets.length > 0) {
-                                                const activos = activeViewData.ubicacion.activos.filter(a => selectedAssets.includes(a.id));
+                                                const activos = (activeViewData?.ubicacion?.activos || []).filter(a => selectedAssets.includes(a.id));
                                                 handlePrintConsolidado(activeViewData.persona, activeViewData.ubicacion, activos);
                                             } else {
                                                 handlePrintConsolidado(activeViewData.persona, activeViewData.ubicacion);
@@ -891,7 +892,7 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {(activeViewData.ubicacion.activos || [])
+                                        {(activeViewData?.ubicacion?.activos || [])
                                             .filter(a =>
                                                 a.codigo_activo?.toLowerCase().includes(assetFilter.toLowerCase()) ||
                                                 a.descripcion?.toLowerCase().includes(assetFilter.toLowerCase())
