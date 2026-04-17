@@ -180,6 +180,10 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
             try {
                 await authFetch('/api/auditorias', {
                     method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-target-institution': selectedUser.institucion
+                    },
                     body: JSON.stringify({
                         usuario_auditado_id: selectedUser.id,
                         activo_id: inExpected.id,
@@ -221,6 +225,10 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
 
                 await authFetch('/api/auditorias', {
                     method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-target-institution': selectedUser.institucion
+                    },
                     body: JSON.stringify({
                         usuario_auditado_id: selectedUser.id,
                         activo_id: foundElsewhere.id,
@@ -251,10 +259,14 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
                     setLoading(true);
                     const res = await authFetch('/api/activos', {
                         method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-target-institution': selectedUser.institucion
+                        },
                         body: JSON.stringify({
                             codigo_activo: code,
                             descripcion: 'ACTIVO SOBRANTE - HALLADO EN AUDITORÍA',
-                            estado_actual: 'Sobrante',
+                            estado_actual: 'Disponible', // "Sobrante" no está en el CHECK de la DB
                             registrado_por: currentUser?.nombre
                         })
                     });
@@ -264,6 +276,10 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
                     // Vincular a la auditoría del usuario
                     await authFetch('/api/auditorias', {
                         method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-target-institution': selectedUser.institucion
+                        },
                         body: JSON.stringify({
                             usuario_auditado_id: selectedUser.id,
                             activo_id: data.id,
@@ -276,7 +292,7 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
                     setSurplusActivos(prev => [data.activo, ...prev]);
                     await showAlert(`Activo ${code} registrado exitosamente como sobrante.`, { title: 'Registrado', type: 'success' });
                 } catch (err) {
-                    await showAlert('Error al registrar el activo sobrante.', { title: 'Error', type: 'error' });
+                    await showAlert(err.message || 'Error al registrar el activo sobrante.', { title: 'Error', type: 'error' });
                 } finally {
                     setLoading(false);
                 }
@@ -292,7 +308,10 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
         try {
             await authFetch(`/api/auditorias/usuario/${selectedUser.id}`, {
                 method: 'DELETE',
-                headers: { 'x-target-institution': selectedUser.institucion }
+                headers: {
+                    'x-admin-password': currentUser?.password || '',
+                    'x-target-institution': selectedUser.institucion
+                }
             });
             setControlledActivos([]);
             setSurplusActivos([]);
@@ -319,7 +338,10 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
                 try {
                     const res = await authFetch(`/api/activos/${activoId}`, {
                         method: 'DELETE',
-                        headers: { 'x-target-institution': selectedUser.institucion }
+                        headers: {
+                            'x-admin-password': currentUser?.password || '',
+                            'x-target-institution': selectedUser.institucion
+                        }
                     });
                     if (res.ok) {
                         setSurplusActivos(prev => prev.filter(a => a.id !== activoId));
@@ -337,7 +359,10 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
         try {
             const res = await authFetch(`/api/auditorias/usuario/${selectedUser.id}/activo/${activoId}`, {
                 method: 'DELETE',
-                headers: { 'x-target-institution': selectedUser.institucion }
+                headers: {
+                    'x-admin-password': currentUser?.password || '',
+                    'x-target-institution': selectedUser.institucion
+                }
             });
 
             if (res.ok) {
@@ -403,6 +428,10 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
         try {
             const res = await authFetch(`/api/activos/${assigningAsset.id}/auditoria-asignar`, {
                 method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-target-institution': selectedUser.institucion
+                },
                 body: JSON.stringify({
                     descripcion: assignFormData.descripcion,
                     cat_auxiliar_id: assignFormData.cat_auxiliar_id,
@@ -415,11 +444,7 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
                     cat_unidad_id: assignFormData.cat_unidad_id || undefined,
                     cat_oficina_id: assignFormData.cat_oficina_id || undefined,
                     cat_piso_id: assignFormData.cat_piso_id || undefined,
-                }),
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-target-institution': selectedUser.institucion
-                }
+                })
             });
 
             if (res.ok) {
@@ -447,6 +472,10 @@ const ControlActivosView = ({ authFetch = fetch, currentUser, institution }) => 
             setLoading(true);
             await authFetch('/api/auditorias', {
                 method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-target-institution': selectedUser.institucion
+                },
                 body: JSON.stringify({
                     usuario_auditado_id: selectedUser.id,
                     activo_id: activo.id,

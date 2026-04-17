@@ -3,7 +3,6 @@
 
 -- 1. Columnas en tabla 'activos'
 -- Intentamos agregar cada una. Si ya existen, D1 simplemente dará un aviso o se puede ignorar.
-ALTER TABLE activos ADD COLUMN serie TEXT;
 ALTER TABLE activos ADD COLUMN cat_auxiliar_id INTEGER;
 ALTER TABLE activos ADD COLUMN cat_grupo_contable_id INTEGER;
 ALTER TABLE activos ADD COLUMN cat_piso_id INTEGER;
