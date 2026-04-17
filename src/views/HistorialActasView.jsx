@@ -290,14 +290,18 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
             groupList.forEach((group, idx) => {
                 const { metadata, activos } = group;
 
-                // Si no hay suficiente espacio para el header + al menos 1 fila de tabla, saltamos página
-                if (y > PH - 45) { doc.addPage(); y = MT; }
+                const locText = `UBICACIÓN: ${metadata.unidad} / ${metadata.oficina} (Piso: ${metadata.piso})`.toUpperCase();
+                const locLines = doc.splitTextToSize(locText, contentW - 6);
+                const headerH = locLines.length * 4.5 + 2;
 
-                // Sub-header de ubicación
-                doc.setFillColor(245, 247, 250); doc.rect(ML, y, contentW, 7, 'F');
-                doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(51, 65, 85);
-                doc.text(`UBICACIÓN: ${metadata.unidad} / ${metadata.oficina} (Piso: ${metadata.piso})`, ML + 3, y + 4.5);
-                y += 8;
+                // Si no hay suficiente espacio para el header + al menos 1 fila de tabla, saltamos página
+                if (y + headerH > PH - 45) { doc.addPage(); y = MT; }
+
+                // Sub-header de ubicación con fondo dinámico
+                doc.setFillColor(245, 247, 250); doc.rect(ML, y, contentW, headerH, 'F');
+                doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(51, 65, 85);
+                doc.text(locLines, ML + 3, y + 4.5);
+                y += headerH + 1;
 
                 autoTable(doc, {
                     startY: y, margin: { left: ML, right: MR, bottom: MB },
