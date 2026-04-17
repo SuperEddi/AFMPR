@@ -762,6 +762,16 @@ app.post('/activos', async (c) => {
 
         const cleanId = (val: any) => (val === '' || val === undefined || val === 'undefined') ? null : val;
 
+        // VERIFICACIÓN MANUAL DE DUPLICADOS (Doble seguridad)
+        const existing = await db.prepare('SELECT id FROM activos WHERE codigo_activo = ? LIMIT 1').bind(codigo_activo).first();
+        if (existing) {
+            return c.json({
+                success: false,
+                error: 'Código Duplicado',
+                message: `El código "${codigo_activo}" ya está registrado en el sistema. No se pueden crear duplicados.`
+            }, 409);
+        }
+
         const result = await db.prepare(`
             INSERT INTO activos (
                 codigo_activo, descripcion, estado_actual, 

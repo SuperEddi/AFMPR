@@ -587,6 +587,8 @@ const GenerarActaView = ({ tipo: tipoProp = 'Asignación', authFetch = fetch, cu
                 });
                 fetchActivosDisponibles();
                 window.dispatchEvent(new CustomEvent('data-updated'));
+            } else if (res.status === 409) {
+                await showAlert(data.message || 'Ese código de activo ya está registrado en el sistema.', { title: 'Código Duplicado', type: 'warning' });
             } else {
                 await showAlert(data.message || data.error || 'Error al registrar el activo.', { title: 'Error', type: 'error' });
             }
