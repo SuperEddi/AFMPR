@@ -29,6 +29,7 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
     const [assetFilter, setAssetFilter] = useState('');
     const [liberandoActivo, setLiberandoActivo] = useState(null);
     const [editingAsset, setEditingAsset] = useState(null);
+    const [movingAssetsParams, setMovingAssetsParams] = useState(null);
     const [savingAsset, setSavingAsset] = useState(false);
     const [selectedUbicKeys, setSelectedUbicKeys] = useState([]);
 
@@ -129,6 +130,41 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                 await showAlert('Cambios guardados con éxito.', { type: 'success' });
             } else {
                 await showAlert('Error al guardar.', { type: 'error' });
+            }
+        } catch { await showAlert('Error de red.', { type: 'error' }); }
+        finally { setSavingAsset(false); }
+    };
+
+    const handleBulkMove = async (e) => {
+        e.preventDefault();
+        setSavingAsset(true);
+        try {
+            const promises = selectedAssets.map(assetId => {
+                const assetData = (activeViewData?.ubicacion?.activos || []).find(a => a.id === assetId);
+                return authFetch(`/api/activos/${assetId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ...assetData,
+                        ubicacion_fisica_id: movingAssetsParams.ubicacion_fisica_id,
+                        cat_unidad_id: movingAssetsParams.cat_unidad_id,
+                        cat_oficina_id: movingAssetsParams.oficina_id,
+                        cat_piso_id: movingAssetsParams.cat_piso_id,
+                        registrado_por: currentUser?.nombre
+                    })
+                });
+            });
+
+            const results = await Promise.all(promises);
+            const allOk = results.every(r => r.ok);
+
+            if (allOk) {
+                await Promise.all([fetchHistorial(true), fetchActas(), fetchAllActivos()]);
+                setMovingAssetsParams(null);
+                setSelectedAssets([]);
+                await showAlert('Movimientos masivos guardados con éxito.', { type: 'success' });
+            } else {
+                await showAlert('Error al guardar algunos movimientos.', { type: 'error' });
             }
         } catch { await showAlert('Error de red.', { type: 'error' }); }
         finally { setSavingAsset(false); }
@@ -778,6 +814,19 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3">
+                                    {selectedAssets.length > 0 && (
+                                        <button
+                                            onClick={() => setMovingAssetsParams({
+                                                ubicacion_fisica_id: '',
+                                                cat_unidad_id: '',
+                                                oficina_id: '',
+                                                cat_piso_id: ''
+                                            })}
+                                            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                                        >
+                                            <MapPin size={14} /> Mover Seleccionados ({selectedAssets.length})
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => {
                                             if (selectedAssets.length > 0) {
@@ -970,6 +1019,43 @@ const HistorialActasView = ({ authFetch = fetch, currentUser }) => {
             )}
 
             <AppDialog {...dialogProps} />
+
+            {/* SHARED BULK MOVE MODAL */}
+            {movingAssetsParams && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl border border-white overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="px-8 py-6 bg-slate-900 flex items-center justify-between">
+                            <div className="flex items-center gap-4 text-white"><MapPin size={20} /><h3 className="font-black uppercase tracking-tight">Mover {selectedAssets.length} Activos</h3></div>
+                            <button onClick={() => setMovingAssetsParams(null)} className="text-white/40 hover:text-white"><X size={24} /></button>
+                        </div>
+                        <form onSubmit={handleBulkMove} className="p-8 space-y-6 overflow-y-auto flex-1">
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Edificio Destino</label>
+                                        <QuickAddSelect options={catalogos.ubicaciones} labelField="nombre" placeholder="Edificio..." value={movingAssetsParams.ubicacion_fisica_id || ''} onChange={id => setMovingAssetsParams({ ...movingAssetsParams, ubicacion_fisica_id: id, cat_unidad_id: '', oficina_id: '' })} />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Piso Destino</label>
+                                        <QuickAddSelect options={catalogos.pisos} labelField="numero" placeholder="Piso..." value={movingAssetsParams.cat_piso_id || ''} onChange={id => setMovingAssetsParams({ ...movingAssetsParams, cat_piso_id: id })} />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Unidad Destino</label>
+                                        <QuickAddSelect options={catalogos.unidades.filter(u => !movingAssetsParams.ubicacion_fisica_id || u.ubicacion_fisica_id == movingAssetsParams.ubicacion_fisica_id)} labelField="nombre" placeholder="Unidad..." value={movingAssetsParams.cat_unidad_id || ''} onChange={id => setMovingAssetsParams({ ...movingAssetsParams, cat_unidad_id: id, oficina_id: '' })} />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Oficina Destino</label>
+                                        <QuickAddSelect options={catalogos.oficinas.filter(o => !movingAssetsParams.cat_unidad_id || o.unidad_id == movingAssetsParams.cat_unidad_id)} labelField="nombre" placeholder="Oficina..." value={movingAssetsParams.oficina_id || ''} onChange={id => setMovingAssetsParams({ ...movingAssetsParams, oficina_id: id })} />
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="submit" disabled={savingAsset} className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 transition-colors">{savingAsset ? <RefreshCw className="animate-spin" /> : <CheckCircle />} MOVER ACTIVOS SELECCIONADOS</button>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {/* SHARED EDIT MODAL */}
             {
