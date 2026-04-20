@@ -6,31 +6,31 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "detalle_activos_tierras"
-database_id = "d5569fdb-8e4e-437d-9d14-470637c21756"
+database_id = "1e137e1e-9032-4261-98ef-d1cb9d7dadfa"
 migrations_dir = "sql"
 
 [[d1_databases]]
 binding = "DB_JUSTICIA"
 database_name = "db_justicia_activos"
-database_id = "734aa7f7-daae-4fc1-8328-eea112262778"
+database_id = "356c3a03-2ade-48e1-ae8f-fb137594b9dc"
 migrations_dir = "sql"
 
 [[d1_databases]]
 binding = "DB_PRESIDENCIA" # Este nombre debe ser exacto
 database_name = "db_presidencia_activos"
-database_id = "7447ca5c-b339-468d-83ca-25d4042eb01c"
+database_id = "d3451c14-08f0-4d10-b8b1-8253645992ef"
 migrations_dir = "sql"
 
 [[d1_databases]]
 binding = "DB_CULTURAS"
 database_name = "db_culturas_activos"
-database_id = "a260252f-9b86-446e-ab4b-f3885b6b5c38"
+database_id = "ae3a9b87-f64b-47b7-bd82-722587b0dee3"
 migrations_dir = "sql"
 
 [[d1_databases]]
 binding = "DB_VICEPRESIDENCIA"
 database_name = "db_vicepresidencia_activos"
-database_id = "12512e04-7583-495a-be25-3a0ff29a0b10"
+database_id = "6ede2f84-b5ff-4a7b-a6f8-d05a43b07838"
 migrations_dir = "sql"
 
 
