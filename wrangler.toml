@@ -33,6 +33,6 @@ database_name = "db_vicepresidencia_activos"
 database_id = "12512e04-7583-495a-be25-3a0ff29a0b10"
 migrations_dir = "sql"
 
-[[kv_namespaces]]
-binding = "CACHE"
-id = "8365215413964d27a8d8eb19e9880449"
+
+
+
