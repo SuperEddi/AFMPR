@@ -102,17 +102,31 @@ const ActivosView = ({ authFetch = fetch, currentUser, institution }) => {
                 const data = await res.json();
                 setCatalogos(data);
             }
-        } catch (err) { }
+        } catch (err) { 
+            console.error("ERROR FETCH ACTIVOS:", err);
+        }
     }, [authFetch]);
 
-    const fetchActivos = useCallback(async (silent = false) => {
-        if (!silent) setLoading(true);
-        try {
-            const res = await authFetch('/api/activos');
-            if (res.ok) setActivos(await res.json());
-        } catch (err) { }
-        setLoading(false);
-    }, [authFetch]);
+const fetchActivos = useCallback(async (silent = false) => {
+    console.log("LLAMANDO A /api/activos");
+
+    if (!silent) setLoading(true);
+    try {
+        const res = await authFetch('/api/activos');
+        console.log("RESPUESTA:", res);
+
+        if (res.ok) {
+            const data = await res.json();
+            console.log("DATA:", data);
+            setActivos(data);
+        } else {
+            console.error("RESPUESTA NO OK", res.status);
+        }
+    } catch (err) {
+        console.error("ERROR FETCH ACTIVOS:", err);
+    }
+    setLoading(false);
+}, [authFetch]);
 
     // Carga inicial y cuando cambia la institución o los callbacks de fecth
     useEffect(() => {
